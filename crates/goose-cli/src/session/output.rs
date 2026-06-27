@@ -859,11 +859,7 @@ pub fn render_discovery_nudge(d: &goose::discovery::Discovery) {
     let _ = kind_label;
     println!();
     println!("  {}", style(badge).black().on_cyan().bold());
-    println!(
-        "  {}  {}",
-        style("┃").cyan(),
-        style(d.title()).bold(),
-    );
+    println!("  {}  {}", style("┃").cyan(), style(d.title()).bold(),);
     // Description (wrapped to a couple of lines).
     let desc = d.description();
     for line in wrap_simple(desc, 76) {
@@ -929,9 +925,18 @@ pub fn render_skills_bundle(d: &goose::discovery::Discovery) {
     use goose::discovery::DiscoveryKind;
     if let DiscoveryKind::Skills(bundle) = &d.kind {
         println!();
-        println!("  {} {}", style("✓ skills").green().bold(), style(&bundle.name).cyan());
+        println!(
+            "  {} {}",
+            style("✓ skills").green().bold(),
+            style(&bundle.name).cyan()
+        );
         for s in &bundle.skills {
-            println!("    {} {} — {}", style("•").cyan(), style(&s.name).bold(), style(&s.description).dim());
+            println!(
+                "    {} {} — {}",
+                style("•").cyan(),
+                style(&s.name).bold(),
+                style(&s.description).dim()
+            );
         }
         println!();
     }

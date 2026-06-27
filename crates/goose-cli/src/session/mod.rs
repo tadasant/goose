@@ -837,14 +837,13 @@ impl CliSession {
                 None
             };
 
-            let config =
-                match goose::discovery::discovery_to_extension(&d, secret.as_deref()) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        output::render_error(&format!("Could not build extension: {e}"));
-                        continue;
-                    }
-                };
+            let config = match goose::discovery::discovery_to_extension(&d, secret.as_deref()) {
+                Ok(c) => c,
+                Err(e) => {
+                    output::render_error(&format!("Could not build extension: {e}"));
+                    continue;
+                }
+            };
             let ext_name = match &config {
                 ExtensionConfig::StreamableHttp { name, .. } => name.clone(),
                 _ => d.title(),

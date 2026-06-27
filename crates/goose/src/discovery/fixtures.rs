@@ -56,7 +56,9 @@ pub fn modelcontextprotocol_card() -> ServerCard {
             light: Some(mcp_icon()),
             dark: Some(mcp_icon()),
         }),
-        repository: Some("https://github.com/modelcontextprotocol/modelcontextprotocol".to_string()),
+        repository: Some(
+            "https://github.com/modelcontextprotocol/modelcontextprotocol".to_string(),
+        ),
         website: Some("https://modelcontextprotocol.io".to_string()),
         remote: Some(RemoteTransport {
             transport_type: "streamable-http".to_string(),

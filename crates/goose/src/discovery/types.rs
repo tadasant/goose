@@ -165,7 +165,9 @@ pub struct SkillRef {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DiscoveryKind {
-    Server(ServerCard),
+    // Boxed: `ServerCard` is much larger than `SkillsBundle`, so an unboxed
+    // variant bloats every `DiscoveryKind`/`Discovery` (clippy::large_enum_variant).
+    Server(Box<ServerCard>),
     Skills(SkillsBundle),
 }
 
@@ -191,7 +193,7 @@ impl Discovery {
         Discovery {
             id: format!("{}#{}", source_domain, card.name),
             source_domain: source_domain.to_string(),
-            kind: DiscoveryKind::Server(card),
+            kind: DiscoveryKind::Server(Box::new(card)),
             fixture,
         }
     }
@@ -227,18 +229,16 @@ impl Discovery {
     /// True if installing this server requires the user to supply a secret.
     pub fn requires_auth(&self) -> bool {
         match &self.kind {
-            DiscoveryKind::Server(c) => c
-                .remote
-                .as_ref()
-                .map(|r| r.auth.is_some())
-                .unwrap_or(false),
+            DiscoveryKind::Server(c) => {
+                c.remote.as_ref().map(|r| r.auth.is_some()).unwrap_or(false)
+            }
             DiscoveryKind::Skills(_) => false,
         }
     }
 
     pub fn server_card(&self) -> Option<&ServerCard> {
         match &self.kind {
-            DiscoveryKind::Server(c) => Some(c),
+            DiscoveryKind::Server(c) => Some(c.as_ref()),
             _ => None,
         }
     }

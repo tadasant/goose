@@ -278,7 +278,13 @@ pub fn extension_name_for(card: &ServerCard) -> String {
     let base = card.name.rsplit('/').next().unwrap_or(&card.name);
     let cleaned: String = base
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if cleaned.is_empty() {
         "discovered-server".to_string()
@@ -297,7 +303,10 @@ pub fn server_card_to_extension(
         .remote
         .as_ref()
         .ok_or_else(|| "server card has no remote transport".to_string())?;
-    if !remote.transport_type.eq_ignore_ascii_case("streamable-http") {
+    if !remote
+        .transport_type
+        .eq_ignore_ascii_case("streamable-http")
+    {
         return Err(format!(
             "unsupported transport type: {}",
             remote.transport_type
@@ -313,9 +322,8 @@ pub fn server_card_to_extension(
                 .header
                 .clone()
                 .unwrap_or_else(|| "Authorization".to_string());
-            let secret = secret.ok_or_else(|| {
-                format!("auth required: provide a value for {}", header_name)
-            })?;
+            let secret = secret
+                .ok_or_else(|| format!("auth required: provide a value for {}", header_name))?;
             let prefix = auth.prefix.clone().unwrap_or_default();
             headers.insert(header_name, format!("{}{}", prefix, secret));
         }

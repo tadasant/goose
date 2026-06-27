@@ -25,14 +25,17 @@ pub use types::{
 #[cfg(test)]
 mod tests {
     use super::resolver::{CatalogResolver, FixtureResolver};
-    use super::service::{extract_hosts, server_card_to_extension, DiscoveryMode, DiscoveryService};
+    use super::service::{
+        extract_hosts, server_card_to_extension, DiscoveryMode, DiscoveryService,
+    };
     use super::types::DiscoveryKind;
     use crate::agents::extension::ExtensionConfig;
     use std::sync::Arc;
 
     #[test]
     fn extracts_scheme_qualified_hosts() {
-        let hosts = extract_hosts(r#"{"command":"curl -s https://modelcontextprotocol.io/llms.txt"}"#);
+        let hosts =
+            extract_hosts(r#"{"command":"curl -s https://modelcontextprotocol.io/llms.txt"}"#);
         assert!(hosts.contains(&"modelcontextprotocol.io".to_string()));
     }
 
@@ -54,10 +57,15 @@ mod tests {
         let found = r.resolve("modelcontextprotocol.io").await;
         assert_eq!(found.len(), 2, "expected one server + one skills bundle");
         assert!(found.iter().any(|d| d.is_server()));
-        assert!(found.iter().any(|d| matches!(d.kind, DiscoveryKind::Skills(_))));
+        assert!(found
+            .iter()
+            .any(|d| matches!(d.kind, DiscoveryKind::Skills(_))));
         let server = found.iter().find(|d| d.is_server()).unwrap();
         let card = server.server_card().unwrap();
-        assert_eq!(card.remote.as_ref().unwrap().url, "https://modelcontextprotocol.io/mcp");
+        assert_eq!(
+            card.remote.as_ref().unwrap().url,
+            "https://modelcontextprotocol.io/mcp"
+        );
         assert!(!server.requires_auth(), "mcp docs server is auth-less");
     }
 
@@ -85,7 +93,10 @@ mod tests {
     async fn light_mode_ignores_non_fetch_tools() {
         let svc = DiscoveryService::new(DiscoveryMode::Light, Arc::new(FixtureResolver));
         // A shell tool is not fetch-like → ignored in light mode.
-        svc.observe_tool_call("developer__shell", r#"{"command":"curl https://modelcontextprotocol.io"}"#);
+        svc.observe_tool_call(
+            "developer__shell",
+            r#"{"command":"curl https://modelcontextprotocol.io"}"#,
+        );
         assert_eq!(svc.pending_count(), 0);
     }
 }
