@@ -152,6 +152,8 @@ pub struct Agent {
 
     pub(super) tool_inspection_manager: ToolInspectionManager,
     pub(super) hook_manager: crate::hooks::HookManager,
+    /// Background AI Catalog / Server Card discovery sidecar (SEP-2127).
+    pub discovery: Arc<crate::discovery::DiscoveryService>,
     #[cfg(test)]
     pub(super) stop_hook_block_cap_override: Option<u32>,
     steer_queues: Mutex<HashMap<String, SteerQueue>>,
@@ -230,6 +232,7 @@ impl Agent {
                 inspection_session_manager,
             ),
             hook_manager: crate::hooks::HookManager::load(std::env::current_dir().ok().as_deref()),
+            discovery: Arc::new(crate::discovery::DiscoveryService::from_config()),
             #[cfg(test)]
             stop_hook_block_cap_override: None,
             steer_queues: Mutex::new(HashMap::new()),
@@ -606,6 +609,7 @@ impl Agent {
             extension_lease,
             tool_inspection_manager: &self.tool_inspection_manager,
             hook_manager: self.hook_manager.clone(),
+            discovery: Arc::clone(&self.discovery),
             steer_queue,
             subagent_runner: SubagentRunner::new(Arc::clone(self)),
             retry_timeout: std::time::Duration::from_secs(retry_timeout),

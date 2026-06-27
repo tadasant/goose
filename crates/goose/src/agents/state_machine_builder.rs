@@ -14,6 +14,7 @@ use crate::agents::state_machine::{
     SubagentOperation, ToolApprovalOperation, ToolExecutionOperation, ToolPairCompactionOperation,
 };
 use crate::agents::subagent_handler::SubagentRunner;
+use crate::discovery::DiscoveryService;
 use crate::hooks::HookManager;
 use crate::providers::base::Provider;
 use crate::session::{Session, SessionManager};
@@ -31,6 +32,7 @@ pub(crate) struct StateMachineConfig<'a> {
     pub(crate) extension_lease: Arc<StdMutex<Option<Arc<ExtensionLease>>>>,
     pub(crate) tool_inspection_manager: &'a ToolInspectionManager,
     pub(crate) hook_manager: HookManager,
+    pub(crate) discovery: Arc<DiscoveryService>,
     pub(crate) steer_queue: SteerQueue,
     pub(crate) subagent_runner: SubagentRunner,
     pub(crate) retry_timeout: Duration,
@@ -55,6 +57,7 @@ pub(crate) fn build_state_machine(
         extension_lease,
         tool_inspection_manager,
         hook_manager,
+        discovery,
         steer_queue,
         subagent_runner,
         retry_timeout,
@@ -76,6 +79,7 @@ pub(crate) fn build_state_machine(
             Arc::clone(&extension_manager),
             hook_manager.clone(),
             Arc::clone(&extension_lease),
+            discovery,
         )),
         Arc::new(RemainingToolCallsOperation::new(hook_manager.clone())),
         Arc::new(SubagentOperation::new(subagent_runner, cancel.clone())),

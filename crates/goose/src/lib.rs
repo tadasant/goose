@@ -16,6 +16,7 @@ pub mod conversation {
     pub use goose_providers::conversation::*;
 }
 pub mod dictation;
+pub mod discovery;
 pub mod doctor;
 pub mod download_manager;
 pub mod elicitation;

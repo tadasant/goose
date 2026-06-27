@@ -610,6 +610,9 @@ impl CliSession {
 
             self.display_context_usage().await?;
 
+            // Surface any AI Catalog / Server Card discoveries from the last turn.
+            self.surface_discovery_nudges().await?;
+
             let conversation_strings: Vec<String> = self
                 .messages
                 .user_visible_messages()
@@ -765,6 +768,106 @@ impl CliSession {
             InputResult::ListSkills => {
                 history.save(editor);
                 self.handle_list_skills().await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Surface any AI Catalog / Server Card discoveries the background sidecar
+    /// found while the last turn was running. Renders an install nudge inline and,
+    /// on confirmation, augments the *current* session with the discovered server.
+    async fn surface_discovery_nudges(&mut self) -> Result<()> {
+        use goose::discovery::DiscoveryMode;
+        if self.agent.discovery.mode() == DiscoveryMode::Off {
+            return Ok(());
+        }
+        // Give in-flight background probes a brief moment to settle (breaks early).
+        for _ in 0..6 {
+            if self.agent.discovery.pending_count() > 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+        }
+
+        let discoveries = self.agent.discovery.take_unsurfaced();
+        for d in discoveries {
+            output::render_discovery_nudge(&d);
+
+            let prompt = if d.is_server() {
+                format!("Install MCP server \"{}\" into this session?", d.title())
+            } else {
+                format!("View Skills bundle \"{}\"?", d.title())
+            };
+            let accept = cliclack::confirm(prompt)
+                .initial_value(false)
+                .interact()
+                .unwrap_or(false);
+            if !accept {
+                self.agent.discovery.mark_dismissed(&d.id);
+                output::render_discovery_dismissed(&d.title());
+                continue;
+            }
+
+            if !d.is_server() {
+                output::render_skills_bundle(&d);
+                self.agent.discovery.mark_installed(&d.id);
+                continue;
+            }
+
+            // Collect an auth secret if the card requires one (e.g. GitHub PAT).
+            let secret = if d.requires_auth() {
+                if let Some(instr) = d
+                    .server_card()
+                    .and_then(|c| c.remote.as_ref())
+                    .and_then(|r| r.auth.as_ref())
+                    .and_then(|a| a.instructions.clone())
+                {
+                    output::render_text(&instr, Some(Color::Yellow), false);
+                }
+                let token: String = cliclack::password("Auth token / API key")
+                    .mask('•')
+                    .interact()
+                    .unwrap_or_default();
+                if token.trim().is_empty() {
+                    output::render_error("No token entered; skipping install.");
+                    continue;
+                }
+                Some(token)
+            } else {
+                None
+            };
+
+            let config =
+                match goose::discovery::discovery_to_extension(&d, secret.as_deref()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        output::render_error(&format!("Could not build extension: {e}"));
+                        continue;
+                    }
+                };
+            let ext_name = match &config {
+                ExtensionConfig::StreamableHttp { name, .. } => name.clone(),
+                _ => d.title(),
+            };
+
+            let spinner = cliclack::spinner();
+            spinner.start(format!("Connecting to {}…", ext_name));
+            match self.add_and_persist_extensions(vec![config]).await {
+                Ok(()) => {
+                    spinner.stop(format!("Connected to {}", ext_name));
+                    self.agent.discovery.mark_installed(&d.id);
+                    let tools = self
+                        .agent
+                        .list_tools(&self.session_id, Some(ext_name.clone()))
+                        .await;
+                    let tool_names: Vec<String> =
+                        tools.iter().map(|t| t.name.to_string()).collect();
+                    output::render_discovery_installed(&ext_name, &tool_names);
+                }
+                Err(e) => {
+                    spinner.error(format!("Install failed: {}", e));
+                    output::render_error(&format!("Failed to install {}: {}", ext_name, e));
+                }
             }
         }
         Ok(())

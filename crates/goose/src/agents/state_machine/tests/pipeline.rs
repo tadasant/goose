@@ -123,6 +123,7 @@ impl TestPipeline {
             extension_lease: Arc::clone(&self.extension_lease),
             tool_inspection_manager: &self.tool_inspection_manager,
             hook_manager: self.hook_manager.clone(),
+            discovery: Arc::clone(&self.subagent_host.discovery),
             steer_queue: self.steer_queue.clone(),
             subagent_runner: SubagentRunner::new(Arc::clone(&self.subagent_host)),
             retry_timeout: std::time::Duration::from_secs(1),

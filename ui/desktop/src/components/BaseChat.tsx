@@ -9,6 +9,7 @@ import { MainPanelLayout } from './Layout/MainPanelLayout';
 import ChatInput from './ChatInput';
 import { ChatInputCard } from './ChatInputCard';
 import { Button } from './ui/button';
+import DiscoveryNudge from './discovery/DiscoveryNudge';
 import { ScrollArea, ScrollAreaHandle } from './ui/scroll-area';
 import { useFileDrop } from '../hooks/useFileDrop';
 import { ChatState } from '../types/chatState';
@@ -555,6 +556,11 @@ export default function BaseChat({
             Add to message
           </button>
         )}
+
+        {/* Auto-discovery install nudge: sits between the transcript and the
+            prompt input, surfacing MCP servers / Skills bundles found by
+            probing domains this session touched. */}
+        <DiscoveryNudge sessionId={sessionId} />
 
         <ChatInputCard
           className={cn(

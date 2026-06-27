@@ -24,6 +24,7 @@ use crate::conversation::message::{
 };
 use crate::conversation::Conversation;
 use crate::hints::load_hints::SubdirectoryHintTracker;
+use crate::discovery::DiscoveryService;
 use crate::hooks::{HookChainOutcome, HookContext, HookEvent, HookManager};
 use crate::session::Session;
 
@@ -353,6 +354,7 @@ pub struct ToolExecutionOperation {
     extension_manager: Arc<ExtensionManager>,
     hook_manager: HookManager,
     lease: Arc<StdMutex<Option<Arc<ExtensionLease>>>>,
+    discovery: Arc<DiscoveryService>,
     batch: Arc<StdMutex<ToolBatch>>,
 }
 
@@ -361,11 +363,13 @@ impl ToolExecutionOperation {
         extension_manager: Arc<ExtensionManager>,
         hook_manager: HookManager,
         lease: Arc<StdMutex<Option<Arc<ExtensionLease>>>>,
+        discovery: Arc<DiscoveryService>,
     ) -> Self {
         Self {
             extension_manager,
             hook_manager,
             lease,
+            discovery,
             batch: Arc::default(),
         }
     }
@@ -405,6 +409,10 @@ impl ToolExecutionOperation {
         let request_id = request.id.clone();
         let span = tool_span(&tool_call.name, &request_id, &session.id);
         crate::agents::gen_ai_telemetry::record_tool_arguments(&span, &tool_call);
+        self.discovery.observe_tool_call(
+            &tool_call.name,
+            &serde_json::to_string(&tool_call.arguments).unwrap_or_default(),
+        );
         let result_span = span.clone();
         let leased_session = lease.working_dir().and_then(|working_dir| {
             (working_dir != session.working_dir.as_path()).then(|| {
