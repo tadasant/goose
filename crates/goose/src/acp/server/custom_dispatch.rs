@@ -38,6 +38,30 @@ impl GooseAcpAgent {
         self.on_add_session_extension(req).await
     }
 
+    #[custom_method(DiscoveryPendingRequest)]
+    async fn dispatch_discovery_pending(
+        &self,
+        req: DiscoveryPendingRequest,
+    ) -> Result<DiscoveryPendingResponse, agent_client_protocol::Error> {
+        self.on_discovery_pending(req).await
+    }
+
+    #[custom_method(DiscoveryInstallRequest)]
+    async fn dispatch_discovery_install(
+        &self,
+        req: DiscoveryInstallRequest,
+    ) -> Result<DiscoveryInstallResponse, agent_client_protocol::Error> {
+        self.on_discovery_install(req).await
+    }
+
+    #[custom_method(DiscoveryDismissRequest)]
+    async fn dispatch_discovery_dismiss(
+        &self,
+        req: DiscoveryDismissRequest,
+    ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        self.on_discovery_dismiss(req).await
+    }
+
     #[custom_method(RemoveSessionExtensionRequest)]
     async fn dispatch_remove_session_extension(
         &self,

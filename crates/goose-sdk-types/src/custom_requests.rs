@@ -6,6 +6,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+mod discovery;
+pub use discovery::*;
 mod recipe;
 pub use recipe::*;
 mod schedule;

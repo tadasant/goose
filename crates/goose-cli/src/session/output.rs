@@ -847,6 +847,146 @@ pub fn render_builtin_error(names: &str, error: &str) {
     println!();
 }
 
+// ===================== AI Catalog / Server Card discovery =====================
+
+/// Render the non-intrusive install "ad"/nudge surfaced inline between turns.
+/// Catalog and card text is third-party input; never let it drive the terminal.
+pub fn untrusted(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
+}
+
+pub fn render_discovery_nudge(d: &goose::discovery::Discovery) {
+    use goose::discovery::DiscoveryKind;
+    let badge = match &d.kind {
+        DiscoveryKind::Server(_) => "✦ MCP SERVER DISCOVERED",
+        DiscoveryKind::Skills(_) => "✦ SKILLS BUNDLE DISCOVERED",
+    };
+    println!();
+    println!("  {}", style(badge).black().on_cyan().bold());
+    println!(
+        "  {}  {}",
+        style("┃").cyan(),
+        style(untrusted(&d.title())).bold(),
+    );
+    let desc = untrusted(d.description());
+    for line in wrap_simple(&desc, 76) {
+        println!("  {}  {}", style("┃").cyan(), style(line).dim());
+    }
+    println!(
+        "  {}  {} {}{}",
+        style("┃").cyan(),
+        style("source:").dim(),
+        style(&d.source_domain).cyan(),
+        if d.fixture {
+            style("  (demo fixture)").yellow().to_string()
+        } else {
+            style("  (live /.well-known/ai-catalog.json)")
+                .green()
+                .to_string()
+        }
+    );
+    if let Some(remote) = d.server_card().and_then(|c| c.primary_remote()) {
+        println!(
+            "  {}  {} {}",
+            style("┃").cyan(),
+            style("endpoint:").dim(),
+            style(untrusted(&remote.url)).cyan()
+        );
+    }
+    if let DiscoveryKind::Skills(bundle) = &d.kind {
+        for s in &bundle.skills {
+            println!(
+                "  {}    {} {}",
+                style("┃").cyan(),
+                style("•").cyan(),
+                style(untrusted(&s.name)).bold()
+            );
+        }
+    }
+    if d.requires_auth() {
+        println!(
+            "  {}  {}",
+            style("┃").cyan(),
+            style("requires authentication to connect").yellow()
+        );
+    }
+}
+
+/// Confirm a successful install and list the now-callable tools.
+pub fn render_discovery_installed(name: &str, tool_names: &[String]) {
+    println!();
+    println!(
+        "  {} `{}` is now active in this session",
+        style("✓ installed").green().bold(),
+        style(name).cyan(),
+    );
+    if !tool_names.is_empty() {
+        let shown: Vec<String> = tool_names.iter().take(8).cloned().collect();
+        println!(
+            "    {} {}",
+            style("tools:").dim(),
+            style(shown.join(", ")).dim()
+        );
+        if tool_names.len() > shown.len() {
+            println!(
+                "    {}",
+                style(format!("… and {} more", tool_names.len() - shown.len())).dim()
+            );
+        }
+    }
+    println!();
+}
+
+/// Show a discovered Skills bundle's contents (CLI equivalent of the separate entry).
+pub fn render_skills_bundle(d: &goose::discovery::Discovery) {
+    use goose::discovery::DiscoveryKind;
+    if let DiscoveryKind::Skills(bundle) = &d.kind {
+        println!();
+        println!(
+            "  {} {}",
+            style("✓ skills").green().bold(),
+            style(&bundle.name).cyan()
+        );
+        for s in &bundle.skills {
+            println!(
+                "    {} {} — {}",
+                style("•").cyan(),
+                style(&s.name).bold(),
+                style(&s.description).dim()
+            );
+        }
+        println!();
+    }
+}
+
+pub fn render_discovery_dismissed(title: &str) {
+    println!("  {} {}", style("dismissed").dim(), style(title).dim());
+}
+
+/// Minimal greedy word-wrap for nudge bodies.
+fn wrap_simple(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut cur = String::new();
+    for word in text.split_whitespace() {
+        if cur.is_empty() {
+            cur.push_str(word);
+        } else if cur.len() + 1 + word.len() <= width {
+            cur.push(' ');
+            cur.push_str(word);
+        } else {
+            lines.push(std::mem::take(&mut cur));
+            cur.push_str(word);
+        }
+        if lines.len() >= 3 {
+            break;
+        }
+    }
+    if !cur.is_empty() && lines.len() < 3 {
+        lines.push(cur);
+    }
+    lines
+}
+
 fn render_text_editor_request(call: &CallToolRequestParams, debug: bool) {
     print_tool_header(call);
 

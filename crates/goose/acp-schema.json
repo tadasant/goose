@@ -416,6 +416,212 @@
       "description": "Empty success response for operations that return no data.",
       "x-side": "agent"
     },
+    "DiscoveryPendingRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "description": "List discoveries the background sidecar surfaced for a session.",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/discovery/pending"
+    },
+    "DiscoveryPendingResponse_unstable": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "Active capture mode: \"off\", \"light\" or \"full\"."
+        },
+        "discoveries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DiscoveryCardDto"
+          }
+        }
+      },
+      "required": [
+        "mode",
+        "discoveries"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/discovery/pending"
+    },
+    "DiscoveryCardDto": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "description": "\"server\" or \"skills\""
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "sourceDomain": {
+          "type": "string"
+        },
+        "fixture": {
+          "type": "boolean",
+          "description": "True when the discovery came from the built-in demo fixtures rather than\na live `/.well-known/ai-catalog.json` fetch."
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requiresAuth": {
+          "type": "boolean"
+        },
+        "authKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serverName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DiscoverySkillEntry"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "description",
+        "sourceDomain",
+        "fixture",
+        "requiresAuth"
+      ],
+      "description": "A flat, UI-friendly projection of an AI Catalog / Server Card discovery."
+    },
+    "DiscoverySkillEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ]
+    },
+    "DiscoveryInstallRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "secret": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Auth secret for cards that require one (e.g. a GitHub token)."
+        }
+      },
+      "required": [
+        "sessionId",
+        "id"
+      ],
+      "description": "Install a discovered MCP server into the session (or acknowledge a Skills bundle).",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/discovery/install"
+    },
+    "DiscoveryInstallResponse_unstable": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "\"server\" or \"skills\""
+        },
+        "extensionName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tools the newly installed extension exposes in this session."
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "tools",
+        "message"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/discovery/install"
+    },
+    "DiscoveryDismissRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "id"
+      ],
+      "description": "Dismiss a discovery so it is not surfaced again in this session.",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/discovery/dismiss"
+    },
     "RemoveSessionExtensionRequest_unstable": {
       "type": "object",
       "properties": {
@@ -7071,6 +7277,33 @@
                 {
                   "allOf": [
                     {
+                      "$ref": "#/$defs/DiscoveryPendingRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/discovery/pending",
+                  "title": "DiscoveryPendingRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/DiscoveryInstallRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/discovery/install",
+                  "title": "DiscoveryInstallRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/DiscoveryDismissRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/discovery/dismiss",
+                  "title": "DiscoveryDismissRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
                       "$ref": "#/$defs/RemoveSessionExtensionRequest_unstable"
                     }
                   ],
@@ -8086,6 +8319,22 @@
                         }
                       ],
                       "title": "EmptyResponse"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/DiscoveryPendingResponse_unstable"
+                        }
+                      ],
+                      "title": "DiscoveryPendingResponse_unstable"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/DiscoveryInstallResponse_unstable"
+                        }
+                      ],
+                      "title": "DiscoveryInstallResponse_unstable"
                     },
                     {
                       "allOf": [
