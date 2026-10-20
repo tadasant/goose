@@ -59,11 +59,9 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
     };
   }, [refresh]);
 
-  const removeCard = (id: string) =>
-    setCards((prev) => prev.filter((c) => c.id !== id));
+  const removeCard = (id: string) => setCards((prev) => prev.filter((c) => c.id !== id));
 
-  const setPhase = (id: string, s: RowState) =>
-    setRowState((prev) => ({ ...prev, [id]: s }));
+  const setPhase = (id: string, s: RowState) => setRowState((prev) => ({ ...prev, [id]: s }));
 
   const dismiss = async (card: DiscoveryCard) => {
     removeCard(card.id);
@@ -127,11 +125,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
             <div className="flex items-start gap-3">
               <div className="mt-0.5 shrink-0">
                 {card.icon ? (
-                  <img
-                    src={card.icon}
-                    alt=""
-                    className="size-8 rounded-md bg-white/80 p-1"
-                  />
+                  <img src={card.icon} alt="" className="size-8 rounded-md bg-white/80 p-1" />
                 ) : isServer ? (
                   <Boxes className="size-7 text-text-secondary" />
                 ) : (
@@ -162,9 +156,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                 </div>
 
                 <div className="mt-0.5 flex items-baseline gap-2">
-                  <h4 className="truncate text-sm font-semibold text-text-primary">
-                    {card.title}
-                  </h4>
+                  <h4 className="truncate text-sm font-semibold text-text-primary">{card.title}</h4>
                   {card.version && (
                     <span className="text-[11px] text-text-secondary">v{card.version}</span>
                   )}
@@ -178,9 +170,9 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                   {card.endpoint ? ` · ${card.endpoint}` : ''}
                 </p>
 
-                {card.kind === 'skills' && card.skills.length > 0 && (
+                {card.kind === 'skills' && (card.skills ?? []).length > 0 && (
                   <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                    {card.skills.map((s) => (
+                    {(card.skills ?? []).map((s) => (
                       <li
                         key={s.name}
                         className="rounded-md bg-background-muted px-2 py-0.5 text-[11px] text-text-secondary"
@@ -205,9 +197,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                       autoFocus
                       placeholder="Paste auth token / API key"
                       value={tokens[card.id] || ''}
-                      onChange={(e) =>
-                        setTokens((p) => ({ ...p, [card.id]: e.target.value }))
-                      }
+                      onChange={(e) => setTokens((p) => ({ ...p, [card.id]: e.target.value }))}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') install(card);
                       }}
@@ -220,7 +210,8 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                 {st === 'done' && (
                   <div className="mt-2 rounded-md bg-green-500/10 px-2 py-1.5">
                     <p className="flex items-center gap-1 text-[11px] font-medium text-green-700 dark:text-green-400">
-                      <Check className="size-3" /> {(rowState[card.id] as { message: string }).message}
+                      <Check className="size-3" />{' '}
+                      {(rowState[card.id] as { message: string }).message}
                     </p>
                     {(rowState[card.id] as { tools: string[] }).tools.length > 0 && (
                       <p className="mt-0.5 truncate text-[11px] text-text-secondary">
@@ -260,7 +251,11 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                         <Loader2 className="size-3.5 animate-spin" /> Installing
                       </>
                     ) : isServer ? (
-                      st === 'auth' ? 'Connect' : 'Install'
+                      st === 'auth' ? (
+                        'Connect'
+                      ) : (
+                        'Install'
+                      )
                     ) : (
                       'View'
                     )}

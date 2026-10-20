@@ -55,6 +55,11 @@ import type {
   DictationModelsListResponse_unstable,
   DictationTranscribeRequest_unstable,
   DictationTranscribeResponse_unstable,
+  DiscoveryDismissRequest_unstable,
+  DiscoveryInstallRequest_unstable,
+  DiscoveryInstallResponse_unstable,
+  DiscoveryPendingRequest_unstable,
+  DiscoveryPendingResponse_unstable,
   EncodeRecipeRequest_unstable,
   EncodeRecipeResponse_unstable,
   ExportSessionRequest_unstable,
@@ -209,6 +214,8 @@ import {
   zDictationModelDownloadProgressResponse_unstable,
   zDictationModelsListResponse_unstable,
   zDictationTranscribeResponse_unstable,
+  zDiscoveryInstallResponse_unstable,
+  zDiscoveryPendingResponse_unstable,
   zEncodeRecipeResponse_unstable,
   zExportSessionResponse_unstable,
   zExportSourceResponse_unstable,
@@ -273,6 +280,36 @@ export class GooseExtClient {
     params: AddSessionExtensionRequest_unstable,
   ): Promise<void> {
     await this.conn.request("_goose/unstable/session/extensions/add", params);
+  }
+
+  async discoveryPending_unstable(
+    params: DiscoveryPendingRequest_unstable,
+  ): Promise<DiscoveryPendingResponse_unstable> {
+    const raw = await this.conn.request(
+      "_goose/unstable/discovery/pending",
+      params,
+    );
+    return zDiscoveryPendingResponse_unstable.parse(
+      raw,
+    ) as DiscoveryPendingResponse_unstable;
+  }
+
+  async discoveryInstall_unstable(
+    params: DiscoveryInstallRequest_unstable,
+  ): Promise<DiscoveryInstallResponse_unstable> {
+    const raw = await this.conn.request(
+      "_goose/unstable/discovery/install",
+      params,
+    );
+    return zDiscoveryInstallResponse_unstable.parse(
+      raw,
+    ) as DiscoveryInstallResponse_unstable;
+  }
+
+  async discoveryDismiss_unstable(
+    params: DiscoveryDismissRequest_unstable,
+  ): Promise<void> {
+    await this.conn.request("_goose/unstable/discovery/dismiss", params);
   }
 
   async sessionExtensionsRemove_unstable(

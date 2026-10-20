@@ -1,7 +1,7 @@
 import type {
   DiscoveryCardDto,
-  DiscoveryInstallResponse,
-  DiscoveryPendingResponse,
+  DiscoveryInstallResponse_unstable as DiscoveryInstallResponse,
+  DiscoveryPendingResponse_unstable as DiscoveryPendingResponse,
 } from '@aaif/goose-acp-client';
 import { getAcpClient } from './acpConnection';
 

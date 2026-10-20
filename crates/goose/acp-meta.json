@@ -6,6 +6,21 @@
       "responseType": "EmptyResponse"
     },
     {
+      "method": "_goose/unstable/discovery/pending",
+      "requestType": "DiscoveryPendingRequest_unstable",
+      "responseType": "DiscoveryPendingResponse_unstable"
+    },
+    {
+      "method": "_goose/unstable/discovery/install",
+      "requestType": "DiscoveryInstallRequest_unstable",
+      "responseType": "DiscoveryInstallResponse_unstable"
+    },
+    {
+      "method": "_goose/unstable/discovery/dismiss",
+      "requestType": "DiscoveryDismissRequest_unstable",
+      "responseType": "EmptyResponse"
+    },
+    {
       "method": "_goose/unstable/session/extensions/remove",
       "requestType": "RemoveSessionExtensionRequest_unstable",
       "responseType": "EmptyResponse"

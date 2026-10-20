@@ -94,9 +94,7 @@ describe('DiscoveryNudge', () => {
     fireEvent.change(field, { target: { value: 'ghp_demo_token' } });
     fireEvent.click(screen.getByRole('button', { name: /connect/i }));
 
-    await waitFor(() =>
-      expect(install).toHaveBeenCalledWith('s1', 'srv-github', 'ghp_demo_token')
-    );
+    await waitFor(() => expect(install).toHaveBeenCalledWith('s1', 'srv-github', 'ghp_demo_token'));
   });
 
   it('renders nothing when there are no discoveries', async () => {

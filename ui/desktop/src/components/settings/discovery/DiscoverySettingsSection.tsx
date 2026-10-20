@@ -22,8 +22,7 @@ const OPTIONS: { value: Mode; title: string; description: string }[] = [
   {
     value: 'full',
     title: 'Full',
-    description:
-      'Probe every domain that appears in any tool call (broadest egress capture).',
+    description: 'Probe every domain that appears in any tool call (broadest egress capture).',
   },
 ];
 

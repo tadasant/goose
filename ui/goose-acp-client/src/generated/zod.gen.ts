@@ -114,6 +114,67 @@ export const zAddSessionExtensionRequest_unstable = z.object({
 export const zEmptyResponse = z.record(z.string(), z.unknown());
 
 /**
+ * List discoveries the background sidecar surfaced for a session.
+ */
+export const zDiscoveryPendingRequest_unstable = z.object({
+    sessionId: z.string()
+});
+
+export const zDiscoverySkillEntry = z.object({
+    name: z.string(),
+    description: z.string()
+});
+
+/**
+ * A flat, UI-friendly projection of an AI Catalog / Server Card discovery.
+ */
+export const zDiscoveryCardDto = z.object({
+    id: z.string(),
+    kind: z.string(),
+    title: z.string(),
+    description: z.string(),
+    sourceDomain: z.string(),
+    fixture: z.boolean(),
+    icon: z.string().nullish(),
+    requiresAuth: z.boolean(),
+    authKind: z.string().nullish(),
+    authInstructions: z.string().nullish(),
+    serverName: z.string().nullish(),
+    version: z.string().nullish(),
+    endpoint: z.string().nullish(),
+    skills: z.array(zDiscoverySkillEntry).optional().default([])
+});
+
+export const zDiscoveryPendingResponse_unstable = z.object({
+    mode: z.string(),
+    discoveries: z.array(zDiscoveryCardDto)
+});
+
+/**
+ * Install a discovered MCP server into the session (or acknowledge a Skills bundle).
+ */
+export const zDiscoveryInstallRequest_unstable = z.object({
+    sessionId: z.string(),
+    id: z.string(),
+    secret: z.string().nullish()
+});
+
+export const zDiscoveryInstallResponse_unstable = z.object({
+    kind: z.string(),
+    extensionName: z.string().nullish(),
+    tools: z.array(z.string()),
+    message: z.string()
+});
+
+/**
+ * Dismiss a discovery so it is not surfaced again in this session.
+ */
+export const zDiscoveryDismissRequest_unstable = z.object({
+    sessionId: z.string(),
+    id: z.string()
+});
+
+/**
  * Remove an extension from an active session.
  */
 export const zRemoveSessionExtensionRequest_unstable = z.object({
@@ -2308,6 +2369,9 @@ export const zExtRequest = z.object({
     params: z.union([
         z.union([
             zAddSessionExtensionRequest_unstable,
+            zDiscoveryPendingRequest_unstable,
+            zDiscoveryInstallRequest_unstable,
+            zDiscoveryDismissRequest_unstable,
             zRemoveSessionExtensionRequest_unstable,
             zGetToolsRequest_unstable,
             zSetToolPermissionsRequest_unstable,
@@ -2428,6 +2492,8 @@ export const zExtResponse = z.union([
         result: z.union([
             z.union([
                 zEmptyResponse,
+                zDiscoveryPendingResponse_unstable,
+                zDiscoveryInstallResponse_unstable,
                 zGetToolsResponse_unstable,
                 zSetToolPermissionsResponse_unstable,
                 zGooseToolCallResponse_unstable,
