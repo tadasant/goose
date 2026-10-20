@@ -784,7 +784,7 @@ impl CliSession {
         }
         if background && self.agent.discovery.background_running() {
             output::render_background_discovery_running();
-            for _ in 0..50 {
+            for _ in 0..15 {
                 if !self.agent.discovery.background_running() {
                     break;
                 }

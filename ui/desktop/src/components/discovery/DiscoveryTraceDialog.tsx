@@ -84,8 +84,8 @@ export default function DiscoveryTraceDialog({
                   <span className="text-text-secondary">none</span>
                 ) : (
                   <ul className="flex flex-col gap-1">
-                    {trace.probes.map((p) => (
-                      <li key={p.url} className="text-xs">
+                    {trace.probes.map((p, i) => (
+                      <li key={i} className="text-xs">
                         <code className="text-text-primary">GET {p.url}</code>
                         <span
                           className={cn(
@@ -95,8 +95,8 @@ export default function DiscoveryTraceDialog({
                         >
                           → {p.outcome}
                         </span>
-                        {(p.found ?? []).map((f) => (
-                          <div key={f} className="pl-4 text-text-primary">
+                        {(p.found ?? []).map((f, j) => (
+                          <div key={j} className="pl-4 text-text-primary">
                             • {f}
                           </div>
                         ))}

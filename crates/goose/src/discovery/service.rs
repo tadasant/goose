@@ -197,7 +197,10 @@ impl DiscoveryService {
             None => st.traces.push(trace.clone()),
         }
         let excess = st.traces.len().saturating_sub(MAX_TRACES);
-        st.traces.drain(..excess);
+        let evicted: Vec<String> = st.traces.drain(..excess).map(|t| t.id).collect();
+        for id in evicted {
+            st.surfaced_traces.remove(&id);
+        }
     }
 
     /// Claim a domain for a background probe; false if this session already probed it.
@@ -218,7 +221,7 @@ impl DiscoveryService {
     ) -> Vec<String> {
         let mut st = self.state.write().unwrap();
         let key = intent.trim().to_ascii_lowercase();
-        if !st.background_intents.insert(key) {
+        if !key.is_empty() && !st.background_intents.insert(key) {
             return Vec::new();
         }
         let mut queued = Vec::new();

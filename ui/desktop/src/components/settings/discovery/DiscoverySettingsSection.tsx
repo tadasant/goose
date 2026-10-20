@@ -73,7 +73,7 @@ export function DiscoverySettingsSection() {
     try {
       await upsert(BACKGROUND_KEY, value, false);
     } catch {
-      /* ignore */
+      setBackground(!value);
     }
   };
 

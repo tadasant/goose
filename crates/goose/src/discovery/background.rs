@@ -9,7 +9,12 @@
 //! [`ReasonerTrace`] so the UI can show exactly why something was (or was not)
 //! suggested.
 
+use std::collections::HashSet;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::time::Duration;
+
+use futures::FutureExt;
 
 use chrono::{DateTime, Utc};
 use goose_providers::model::ModelConfig;
@@ -19,11 +24,14 @@ use crate::config::Config;
 use crate::conversation::message::Message;
 use crate::providers::base::Provider;
 
+use super::resolver::is_probeable_host;
 use super::service::{normalize_host, DiscoveryService};
 use super::types::{Discovery, DiscoveryKind, DiscoveryOrigin};
 
 const CONFIG_KEY_MODEL: &str = "discovery_background_model";
 const MAX_CANDIDATE_DOMAINS: usize = 3;
+const MAX_REQUEST_CHARS: usize = 500;
+const REASONER_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub const REASONER_SYSTEM_PROMPT: &str =
     "You are goose's background AI Catalog discovery reasoner. \
@@ -132,7 +140,8 @@ impl DiscoveryService {
         if !self.background_enabled() || user_text.trim().is_empty() {
             return;
         }
-        let requests = self.note_user_request(&user_text);
+        let request: String = user_text.chars().take(MAX_REQUEST_CHARS).collect();
+        let requests = self.note_user_request(&request);
         let mut model_config = model_config;
         if let Ok(model) = Config::global().get_param::<String>(CONFIG_KEY_MODEL) {
             model_config.model_name = model;
@@ -166,9 +175,21 @@ impl DiscoveryService {
 
         let service = Arc::clone(self);
         tokio::spawn(async move {
-            service
-                .run_reasoner(&mut trace, provider, model_config, &session_id)
-                .await;
+            let run = AssertUnwindSafe(tokio::time::timeout(
+                REASONER_TIMEOUT,
+                service.run_reasoner(&mut trace, provider, model_config, &session_id),
+            ))
+            .catch_unwind()
+            .await;
+            let failure = match run {
+                Ok(Ok(())) => None,
+                Ok(Err(_)) => Some("reasoner timed out; nothing to suggest"),
+                Err(_) => Some("reasoner crashed; nothing to suggest"),
+            };
+            if let Some(reason) = failure {
+                trace.status = TraceStatus::Failed;
+                trace.decision = reason.to_string();
+            }
             trace.finished_at = Some(Utc::now());
             service.upsert_trace(&trace);
         });
@@ -207,14 +228,19 @@ impl DiscoveryService {
         };
         trace.intent = Some(output.intent.clone()).filter(|s| !s.is_empty());
         trace.rationale = Some(output.rationale).filter(|s| !s.is_empty());
-        let mut domains: Vec<String> = output
+        let mut seen = HashSet::new();
+        let domains: Vec<String> = output
             .domains
             .iter()
             .map(|d| normalize_host(d))
-            .filter(|d| !d.is_empty())
+            .filter(|d| {
+                d.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+                    && is_probeable_host(d)
+            })
+            .filter(|d| seen.insert(d.clone()))
+            .take(MAX_CANDIDATE_DOMAINS)
             .collect();
-        domains.dedup();
-        domains.truncate(MAX_CANDIDATE_DOMAINS);
         trace.candidate_domains = domains.clone();
         if domains.is_empty() {
             trace.status = TraceStatus::Done;
@@ -227,10 +253,7 @@ impl DiscoveryService {
         trace.decision = format!("probing {} candidate domain(s)…", domains.len());
         self.upsert_trace(trace);
 
-        let intent = trace
-            .intent
-            .clone()
-            .unwrap_or_else(|| "inferred user intent".to_string());
+        let intent = trace.intent.clone().unwrap_or_default();
         let mut found = Vec::new();
         for domain in domains {
             let url = format!("https://{domain}/.well-known/ai-catalog.json");

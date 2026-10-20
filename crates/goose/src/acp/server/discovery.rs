@@ -80,7 +80,9 @@ fn discovery_card(d: &Discovery) -> DiscoveryCardDto {
         }
         .to_string(),
         intent: match &d.origin {
-            DiscoveryOrigin::Background { intent, .. } => Some(intent.clone()),
+            DiscoveryOrigin::Background { intent, .. } => {
+                Some(intent.clone()).filter(|i| !i.is_empty())
+            }
             DiscoveryOrigin::Inline => None,
         },
         trace_id: match &d.origin {
@@ -96,7 +98,6 @@ impl GooseAcpAgent {
         req: DiscoveryPendingRequest,
     ) -> Result<DiscoveryPendingResponse, agent_client_protocol::Error> {
         let agent = self.get_session_agent(&req.session_id).await?;
-        agent.discovery.refresh_from_config();
         Ok(DiscoveryPendingResponse {
             background_enabled: agent.discovery.background_enabled(),
             background_running: agent.discovery.background_running(),

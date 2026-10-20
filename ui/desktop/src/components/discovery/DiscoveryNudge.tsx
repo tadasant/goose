@@ -65,11 +65,11 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     refresh();
-    pollRef.current = setInterval(refresh, 1200);
+    pollRef.current = setInterval(refresh, backgroundRunning ? 1000 : 2500);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [refresh]);
+  }, [refresh, backgroundRunning]);
 
   const removeCard = (id: string) => setCards((prev) => prev.filter((c) => c.id !== id));
 
@@ -132,6 +132,8 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
           type="button"
           data-testid="background-discovery-status"
           data-running={backgroundRunning ? 'true' : 'false'}
+          aria-live="polite"
+          aria-label={`Background discovery: ${latestTrace.decision}. Open trace.`}
           onClick={() => setOpenTraceId(latestTrace.id)}
           className={cn(
             'flex w-fit max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors',
