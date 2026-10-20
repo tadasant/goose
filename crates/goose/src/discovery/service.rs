@@ -12,6 +12,7 @@
 //!     (pre-tool probing on fetch/browse tools, per SEP-2127).
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
 use once_cell::sync::Lazy;
@@ -22,7 +23,7 @@ use crate::agents::extension::ExtensionConfig;
 use crate::config::Config;
 
 use super::fixtures;
-use super::resolver::{CatalogResolver, DefaultResolver};
+use super::resolver::{is_probeable_host, CatalogResolver, DefaultResolver};
 use super::types::{Discovery, DiscoveryKind, ServerCard};
 
 /// How aggressively the sidecar captures domains.
@@ -58,13 +59,13 @@ impl DiscoveryMode {
 
 const CONFIG_KEY_MODE: &str = "discovery_mode";
 const CONFIG_KEY_HTTP: &str = "discovery_http_probe";
+/// Bound on distinct domains probed per session.
+const MAX_SEEN_DOMAINS: usize = 256;
 
 #[derive(Default)]
 struct DiscoveryState {
-    /// Domains already enqueued/probed (positive or negative) — dedup guard.
+    /// Domains already enqueued/probed — dedup guard.
     seen_domains: HashSet<String>,
-    /// Domains probed that advertised nothing.
-    negative: HashSet<String>,
     /// Discoveries found, awaiting user action.
     pending: Vec<Discovery>,
     /// Discovery ids already surfaced to the CLI (so we don't re-nudge inline).
@@ -80,6 +81,7 @@ pub struct DiscoveryService {
     mode: RwLock<DiscoveryMode>,
     resolver: Arc<dyn CatalogResolver>,
     state: Arc<RwLock<DiscoveryState>>,
+    in_flight: Arc<AtomicUsize>,
 }
 
 impl DiscoveryService {
@@ -90,7 +92,7 @@ impl DiscoveryService {
             .get_param::<String>(CONFIG_KEY_MODE)
             .ok()
             .map(|s| DiscoveryMode::from_config_str(&s))
-            .unwrap_or(DiscoveryMode::Light);
+            .unwrap_or(DiscoveryMode::Off);
         let enable_http = config.get_param::<bool>(CONFIG_KEY_HTTP).unwrap_or(true);
         DiscoveryService::new(mode, Arc::new(DefaultResolver::new(enable_http)))
     }
@@ -100,6 +102,7 @@ impl DiscoveryService {
             mode: RwLock::new(mode),
             resolver,
             state: Arc::new(RwLock::new(DiscoveryState::default())),
+            in_flight: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -132,41 +135,40 @@ impl DiscoveryService {
             return;
         }
         let host = normalize_host(raw_host);
-        if host.is_empty() {
+        if !is_probeable_host(&host) {
             return;
         }
         {
             let mut st = self.state.write().unwrap();
-            // insert returns false if already present → already probed/queued.
-            if !st.seen_domains.insert(host.clone()) {
+            if st.seen_domains.len() >= MAX_SEEN_DOMAINS || !st.seen_domains.insert(host.clone()) {
                 return;
             }
         }
         let resolver = self.resolver.clone();
         let state = self.state.clone();
+        let in_flight = self.in_flight.clone();
+        in_flight.fetch_add(1, Ordering::SeqCst);
         tokio::spawn(async move {
             let discoveries = resolver.resolve(&host).await;
-            let mut st = state.write().unwrap();
-            if discoveries.is_empty() {
-                st.negative.insert(host);
-                return;
-            }
-            for d in discoveries {
-                if st.installed.contains(&d.id)
-                    || st.dismissed.contains(&d.id)
-                    || st.pending.iter().any(|p| p.id == d.id)
-                {
-                    continue;
+            {
+                let mut st = state.write().unwrap();
+                for d in discoveries {
+                    if st.installed.contains(&d.id)
+                        || st.dismissed.contains(&d.id)
+                        || st.pending.iter().any(|p| p.id == d.id)
+                    {
+                        continue;
+                    }
+                    st.pending.push(d);
                 }
-                tracing::info!(
-                    discovery_id = %d.id,
-                    domain = %d.source_domain,
-                    fixture = d.fixture,
-                    "ai-catalog discovery surfaced"
-                );
-                st.pending.push(d);
             }
+            in_flight.fetch_sub(1, Ordering::SeqCst);
         });
+    }
+
+    /// Number of catalog probes still running.
+    pub fn probes_in_flight(&self) -> usize {
+        self.in_flight.load(Ordering::SeqCst)
     }
 
     /// All currently-pending discoveries (not installed, not dismissed).
@@ -251,7 +253,14 @@ pub fn extract_hosts(text: &str) -> Vec<String> {
     // mention without a scheme should still trigger the demo fixtures.
     let lower = text.to_ascii_lowercase();
     for d in fixtures::fixture_domains() {
-        if lower.contains(d) {
+        let bounded = lower.match_indices(d).any(|(i, _)| {
+            let before = lower.get(..i).and_then(|t| t.chars().next_back());
+            let after = lower.get(i + d.len()..).and_then(|t| t.chars().next());
+            let is_host_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '.';
+            !before.is_some_and(is_host_char)
+                && !after.is_some_and(|c| c.is_ascii_alphanumeric() || c == '-')
+        });
+        if bounded {
             push(d.to_string());
         }
     }
@@ -313,19 +322,16 @@ pub fn server_card_to_extension(
         .ok_or_else(|| "server card has no streamable-http remote".to_string())?;
 
     let mut headers = remote.static_headers();
-    if let Some(auth) = remote.auth_requirement() {
-        if auth.is_oauth() {
-            // OAuth handled by goose's existing streamable-http OAuth flow on connect.
-        } else {
-            let header_name = auth
-                .header
-                .clone()
-                .unwrap_or_else(|| "Authorization".to_string());
-            let secret = secret
-                .ok_or_else(|| format!("auth required: provide a value for {}", header_name))?;
-            let prefix = auth.prefix.clone().unwrap_or_default();
-            headers.insert(header_name, format!("{}{}", prefix, secret));
-        }
+    // OAuth cards need nothing here: goose's streamable-http client runs OAuth on connect.
+    if let Some(auth) = remote.auth_requirement().filter(|a| !a.is_oauth()) {
+        let header_name = auth
+            .header
+            .clone()
+            .unwrap_or_else(|| "Authorization".to_string());
+        let secret =
+            secret.ok_or_else(|| format!("auth required: provide a value for {}", header_name))?;
+        let prefix = auth.prefix.clone().unwrap_or_default();
+        headers.insert(header_name, format!("{}{}", prefix, secret));
     }
 
     Ok(ExtensionConfig::StreamableHttp {

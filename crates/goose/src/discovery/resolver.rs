@@ -8,9 +8,12 @@
 //! back to a live HTTP probe — which is exactly how this works in production once
 //! domains publish real catalogs.
 
+use std::net::IpAddr;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::de::DeserializeOwned;
+use url::Url;
 
 use super::fixtures;
 use super::types::{
@@ -38,6 +41,76 @@ impl CatalogResolver for FixtureResolver {
     }
 }
 
+const MAX_BODY_BYTES: usize = 256 * 1024;
+const MAX_CATALOG_ENTRIES: usize = 16;
+
+/// Probes are driven by hosts seen in untrusted tool arguments and by URLs in
+/// third-party catalogs, so only public, named hosts are ever contacted.
+pub fn is_probeable_host(host: &str) -> bool {
+    const PRIVATE_SUFFIXES: &[&str] = &[
+        ".localhost",
+        ".local",
+        ".internal",
+        ".lan",
+        ".home.arpa",
+        ".intranet",
+        ".corp",
+    ];
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    !host.is_empty()
+        && host.contains('.')
+        && host.parse::<IpAddr>().is_err()
+        && !host.starts_with('[')
+        && host != "localhost"
+        && !PRIVATE_SUFFIXES.iter().any(|s| host.ends_with(s))
+}
+
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, ..] = v4.octets();
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || a == 0
+                || (a == 100 && (64..128).contains(&b)))
+        }
+        IpAddr::V6(v6) => {
+            let first = v6.segments()[0];
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || (first & 0xfe00) == 0xfc00
+                || (first & 0xffc0) == 0xfe80
+                || v6
+                    .to_ipv4_mapped()
+                    .is_some_and(|v4| !is_public_ip(IpAddr::V4(v4))))
+        }
+    }
+}
+
+/// True if `url` is https on a probeable host that resolves only to public IPs.
+async fn is_safe_url(url: &str) -> bool {
+    let Ok(parsed) = Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    if parsed.scheme() != "https" || !is_probeable_host(host) {
+        return false;
+    }
+    match tokio::net::lookup_host((host, parsed.port_or_known_default().unwrap_or(443))).await {
+        Ok(addrs) => {
+            let addrs: Vec<_> = addrs.collect();
+            !addrs.is_empty() && addrs.iter().all(|a| is_public_ip(a.ip()))
+        }
+        Err(_) => false,
+    }
+}
+
 /// Fetches real `/.well-known/ai-catalog.json` documents and the server cards
 /// they reference.
 pub struct HttpResolver {
@@ -46,38 +119,60 @@ pub struct HttpResolver {
 
 impl Default for HttpResolver {
     fn default() -> Self {
+        let redirects = reqwest::redirect::Policy::custom(|attempt| {
+            let ok = attempt.previous().len() < 3
+                && attempt.url().scheme() == "https"
+                && attempt.url().host_str().is_some_and(is_probeable_host);
+            if ok {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        });
         let client = reqwest::Client::builder()
             .user_agent("goose-ai-catalog-discovery/0.1")
             .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(6))
+            .redirect(redirects)
             .build()
-            .unwrap_or_default();
+            .expect("static reqwest client configuration is valid");
         HttpResolver { client }
     }
 }
 
 impl HttpResolver {
-    async fn fetch_catalog(&self, domain: &str) -> Option<AiCatalog> {
-        let url = format!("https://{}/.well-known/ai-catalog.json", domain);
-        let resp = self.client.get(&url).send().await.ok()?;
-        if !resp.status().is_success() {
+    async fn get_json<T: DeserializeOwned>(&self, url: &str, accept: &str) -> Option<T> {
+        if !is_safe_url(url).await {
             return None;
         }
-        resp.json::<AiCatalog>().await.ok()
-    }
-
-    async fn fetch_card(&self, url: &str) -> Option<ServerCard> {
-        let resp = self
+        let mut resp = self
             .client
             .get(url)
-            .header(reqwest::header::ACCEPT, SERVER_CARD_MEDIA_TYPE)
+            .header(reqwest::header::ACCEPT, accept)
             .send()
             .await
             .ok()?;
         if !resp.status().is_success() {
             return None;
         }
-        resp.json::<ServerCard>().await.ok()
+        let mut body = Vec::new();
+        while let Some(chunk) = resp.chunk().await.ok()? {
+            if body.len() + chunk.len() > MAX_BODY_BYTES {
+                return None;
+            }
+            body.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&body).ok()
+    }
+
+    async fn fetch_catalog(&self, domain: &str) -> Option<AiCatalog> {
+        let url = format!("https://{}/.well-known/ai-catalog.json", domain);
+        self.get_json(&url, "application/ai-catalog+json, application/json")
+            .await
+    }
+
+    async fn fetch_card(&self, url: &str) -> Option<ServerCard> {
+        self.get_json(url, SERVER_CARD_MEDIA_TYPE).await
     }
 
     async fn resolve_entry(&self, domain: &str, entry: CatalogEntry) -> Option<Discovery> {
@@ -118,7 +213,7 @@ impl CatalogResolver for HttpResolver {
             return vec![];
         };
         let mut out = Vec::new();
-        for entry in catalog.entries {
+        for entry in catalog.entries.into_iter().take(MAX_CATALOG_ENTRIES) {
             if let Some(discovery) = self.resolve_entry(domain, entry).await {
                 out.push(discovery);
             }

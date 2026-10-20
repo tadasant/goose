@@ -89,15 +89,70 @@ mod tests {
         }
     }
 
+    async fn settle(svc: &DiscoveryService) {
+        for _ in 0..50 {
+            if svc.probes_in_flight() == 0 {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
     #[tokio::test]
     async fn light_mode_ignores_non_fetch_tools() {
         let svc = DiscoveryService::new(DiscoveryMode::Light, Arc::new(FixtureResolver));
-        // A shell tool is not fetch-like → ignored in light mode.
         svc.observe_tool_call(
             "developer__shell",
             r#"{"command":"curl https://modelcontextprotocol.io"}"#,
         );
+        settle(&svc).await;
         assert_eq!(svc.pending_count(), 0);
+
+        svc.observe_tool_call(
+            "fetch__fetch",
+            r#"{"url":"https://modelcontextprotocol.io"}"#,
+        );
+        settle(&svc).await;
+        assert_eq!(
+            svc.pending_count(),
+            2,
+            "fetch-like tool is probed in light mode"
+        );
+    }
+
+    #[tokio::test]
+    async fn dismissed_discoveries_do_not_resurface() {
+        let svc = DiscoveryService::new(DiscoveryMode::Full, Arc::new(FixtureResolver));
+        svc.observe_domain("modelcontextprotocol.io");
+        settle(&svc).await;
+        let first = svc.pending()[0].id.clone();
+        svc.mark_dismissed(&first);
+        svc.observe_domain("modelcontextprotocol.io");
+        settle(&svc).await;
+        assert!(svc.pending().iter().all(|d| d.id != first));
+    }
+
+    #[test]
+    fn refuses_private_and_literal_hosts() {
+        use super::resolver::is_probeable_host;
+        for bad in [
+            "localhost",
+            "169.254.169.254",
+            "10.0.0.5",
+            "metadata.google.internal",
+            "printer.local",
+            "intranet",
+        ] {
+            assert!(!is_probeable_host(bad), "{bad} must not be probed");
+        }
+        assert!(is_probeable_host("github.com"));
+        assert!(is_probeable_host("huggingface.co"));
+    }
+
+    #[test]
+    fn bare_domain_hint_respects_boundaries() {
+        assert!(extract_hosts("see notmodelcontextprotocol.io").is_empty());
+        assert!(!extract_hosts("see modelcontextprotocol.io now").is_empty());
     }
 
     // Verbatim from https://github.com/.well-known/ai-catalog.json (2026-10-19).

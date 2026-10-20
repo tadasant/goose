@@ -17,7 +17,7 @@ const OPTIONS: { value: Mode; title: string; description: string }[] = [
     value: 'light',
     title: 'Light-touch',
     description:
-      'Only probe domains that appear in fetch / search / browse tool calls. Conservative — recommended default.',
+      'Only probe domains that appear in fetch / search / browse tool calls. Conservative.',
   },
   {
     value: 'full',
@@ -32,7 +32,7 @@ const OPTIONS: { value: Mode; title: string; description: string }[] = [
  */
 export function DiscoverySettingsSection() {
   const { read, upsert } = useConfig();
-  const [mode, setMode] = useState<Mode>('light');
+  const [mode, setMode] = useState<Mode>('off');
   const [saving, setSaving] = useState<Mode | null>(null);
 
   useEffect(() => {
@@ -41,18 +41,19 @@ export function DiscoverySettingsSection() {
         const v = (await read(CONFIG_KEY, false)) as string | undefined;
         if (v === 'off' || v === 'light' || v === 'full') setMode(v);
       } catch {
-        /* default light */
+        /* default off */
       }
     })();
   }, [read]);
 
   const choose = async (value: Mode) => {
+    const previous = mode;
     setMode(value);
     setSaving(value);
     try {
       await upsert(CONFIG_KEY, value, false);
     } catch {
-      /* ignore */
+      setMode(previous);
     } finally {
       setSaving(null);
     }

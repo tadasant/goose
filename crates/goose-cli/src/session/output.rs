@@ -850,19 +850,26 @@ pub fn render_builtin_error(names: &str, error: &str) {
 // ===================== AI Catalog / Server Card discovery =====================
 
 /// Render the non-intrusive install "ad"/nudge surfaced inline between turns.
+/// Catalog and card text is third-party input; never let it drive the terminal.
+pub fn untrusted(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
+}
+
 pub fn render_discovery_nudge(d: &goose::discovery::Discovery) {
     use goose::discovery::DiscoveryKind;
-    let (badge, kind_label) = match &d.kind {
-        DiscoveryKind::Server(_) => ("✦ MCP SERVER DISCOVERED", "server"),
-        DiscoveryKind::Skills(_) => ("✦ SKILLS BUNDLE DISCOVERED", "skills"),
+    let badge = match &d.kind {
+        DiscoveryKind::Server(_) => "✦ MCP SERVER DISCOVERED",
+        DiscoveryKind::Skills(_) => "✦ SKILLS BUNDLE DISCOVERED",
     };
-    let _ = kind_label;
     println!();
     println!("  {}", style(badge).black().on_cyan().bold());
-    println!("  {}  {}", style("┃").cyan(), style(d.title()).bold(),);
-    // Description (wrapped to a couple of lines).
-    let desc = d.description();
-    for line in wrap_simple(desc, 76) {
+    println!(
+        "  {}  {}",
+        style("┃").cyan(),
+        style(untrusted(&d.title())).bold(),
+    );
+    let desc = untrusted(d.description());
+    for line in wrap_simple(&desc, 76) {
         println!("  {}  {}", style("┃").cyan(), style(line).dim());
     }
     println!(
@@ -878,13 +885,21 @@ pub fn render_discovery_nudge(d: &goose::discovery::Discovery) {
                 .to_string()
         }
     );
+    if let Some(remote) = d.server_card().and_then(|c| c.primary_remote()) {
+        println!(
+            "  {}  {} {}",
+            style("┃").cyan(),
+            style("endpoint:").dim(),
+            style(untrusted(&remote.url)).cyan()
+        );
+    }
     if let DiscoveryKind::Skills(bundle) = &d.kind {
         for s in &bundle.skills {
             println!(
                 "  {}    {} {}",
                 style("┃").cyan(),
                 style("•").cyan(),
-                style(&s.name).bold()
+                style(untrusted(&s.name)).bold()
             );
         }
     }

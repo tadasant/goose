@@ -781,9 +781,8 @@ impl CliSession {
         if self.agent.discovery.mode() == DiscoveryMode::Off {
             return Ok(());
         }
-        // Give in-flight background probes a brief moment to settle (breaks early).
         for _ in 0..6 {
-            if self.agent.discovery.pending_count() > 0 {
+            if self.agent.discovery.probes_in_flight() == 0 {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(60)).await;
@@ -822,7 +821,7 @@ impl CliSession {
                     .and_then(|r| r.auth_requirement())
                     .and_then(|a| a.instructions)
                 {
-                    output::render_text(&instr, Some(Color::Yellow), false);
+                    output::render_text(&output::untrusted(&instr), Some(Color::Yellow), false);
                 }
                 let token: String = cliclack::password("Auth token / API key")
                     .mask('•')
@@ -844,10 +843,18 @@ impl CliSession {
                     continue;
                 }
             };
-            let ext_name = match &config {
-                ExtensionConfig::StreamableHttp { name, .. } => name.clone(),
-                _ => d.title(),
-            };
+            let ext_name = config.name();
+            let active = self
+                .agent
+                .list_extensions(&self.session_id)
+                .await
+                .unwrap_or_default();
+            if active.contains(&ext_name) {
+                output::render_error(&format!(
+                    "An extension named `{ext_name}` is already active; not replacing it."
+                ));
+                continue;
+            }
 
             let spinner = cliclack::spinner();
             spinner.start(format!("Connecting to {}…", ext_name));

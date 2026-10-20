@@ -28,7 +28,11 @@ fn discovery_card(d: &Discovery) -> DiscoveryCardDto {
         description: d.description().to_string(),
         source_domain: d.source_domain.clone(),
         fixture: d.fixture,
-        icon: card.and_then(|c| c.icon_url()).map(str::to_string),
+        // Remote icon URLs would be fetched by the renderer (a tracking pixel); inline only.
+        icon: card
+            .and_then(|c| c.icon_url())
+            .filter(|u| u.starts_with("data:"))
+            .map(str::to_string),
         requires_auth: d.requires_auth(),
         auth_kind: auth.as_ref().map(|a| a.kind.clone()),
         auth_instructions: auth.and_then(|a| a.instructions),
@@ -79,6 +83,16 @@ impl GooseAcpAgent {
         let config = discovery_to_extension(&discovery, req.secret.as_deref())
             .map_err(|e| agent_client_protocol::Error::invalid_params().data(e))?;
         let ext_name = config.name();
+        if agent
+            .list_extensions(&req.session_id)
+            .await
+            .internal_err()?
+            .contains(&ext_name)
+        {
+            return Err(agent_client_protocol::Error::invalid_params().data(format!(
+                "An extension named `{ext_name}` is already active; not replacing it"
+            )));
+        }
         agent
             .add_extension(config, &req.session_id)
             .await

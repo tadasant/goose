@@ -27,6 +27,8 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [tokens, setTokens] = useState<Record<string, string>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rowStateRef = useRef(rowState);
+  rowStateRef.current = rowState;
 
   const refresh = useCallback(async () => {
     if (!sessionId) return;
@@ -36,7 +38,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
         // Keep cards that are mid-flow (installing/done/error) even if the
         // server already cleared them, so the user sees the result.
         const sticky = prev.filter((c) => {
-          const st = rowState[c.id]?.phase;
+          const st = rowStateRef.current[c.id]?.phase;
           return st === 'done' || st === 'installing' || st === 'error';
         });
         const seen = new Set(sticky.map((c) => c.id));
@@ -49,7 +51,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
     } catch {
       // Backend not ready / method absent — stay silent, this is a sidecar.
     }
-  }, [sessionId, rowState]);
+  }, [sessionId]);
 
   useEffect(() => {
     refresh();
