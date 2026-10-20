@@ -122,9 +122,9 @@ export function DiscoverySettingsSection() {
         <div>
           <h4 className="text-text-primary text-sm">Background track (dual-track)</h4>
           <p className="text-xs text-text-secondary max-w-md mt-[2px]">
-            A background reasoner infers what you are trying to do, picks the official domains
-            whose AI Catalog could help (e.g. “my GitHub PRs” → github.com), probes them, and
-            suggests installs above the input. Never auto-installs.
+            A background reasoner infers what you are trying to do, picks the official domains whose
+            AI Catalog could help (e.g. “my GitHub PRs” → github.com), probes them, and suggests
+            installs above the input. Never auto-installs.
           </p>
         </div>
         <Switch

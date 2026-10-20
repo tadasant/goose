@@ -111,7 +111,7 @@ describe('DiscoveryNudge', () => {
       startedAt: new Date().toISOString(),
       model: 'openai / gpt-4o-mini',
       requests: ['go to my GitHub and summarise my open PRs'],
-      systemPrompt: 'You are goose\'s background AI Catalog discovery reasoner.',
+      systemPrompt: "You are goose's background AI Catalog discovery reasoner.",
       prompt: 'Recent user requests',
       rawOutput: '{"intent":"summarise the user\'s open GitHub PRs","domains":["github.com"]}',
       intent: "summarise the user's open GitHub PRs",
@@ -121,7 +121,7 @@ describe('DiscoveryNudge', () => {
         {
           domain: 'github.com',
           url: 'https://github.com/.well-known/ai-catalog.json',
-          outcome: '1 entr(y/ies) in live ai-catalog.json',
+          outcome: '1 entry in live ai-catalog.json',
           found: ['MCP server: GitHub'],
         },
       ],
@@ -149,7 +149,9 @@ describe('DiscoveryNudge', () => {
 
     const status = await screen.findByTestId('background-discovery-status');
     expect(status).toHaveTextContent('suggest installing MCP server: GitHub');
-    expect(screen.getByText(/background · summarise the user's open GitHub PRs/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/background · summarise the user's open GitHub PRs/)
+    ).toBeInTheDocument();
 
     fireEvent.click(status);
     const dialog = await screen.findByTestId('discovery-trace');

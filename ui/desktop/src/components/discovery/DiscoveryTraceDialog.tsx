@@ -30,13 +30,17 @@ export default function DiscoveryTraceDialog({
 }) {
   return (
     <Dialog open={trace !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="discovery-trace">
+      <DialogContent
+        className="max-w-2xl max-h-[85vh] overflow-y-auto"
+        data-testid="discovery-trace"
+      >
         {trace && (
           <>
             <DialogHeader>
               <DialogTitle>Background discovery trace</DialogTitle>
               <DialogDescription>
-                {trace.status} · {trace.model} · started {new Date(trace.startedAt).toLocaleTimeString()}
+                {trace.status} · {trace.model} · started{' '}
+                {new Date(trace.startedAt).toLocaleTimeString()}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-4 text-sm">
@@ -55,7 +59,9 @@ export default function DiscoveryTraceDialog({
               </Section>
               <Section label="Inferred intent">
                 <div className="text-text-primary">{trace.intent ?? '—'}</div>
-                {trace.rationale && <div className="text-xs text-text-secondary">{trace.rationale}</div>}
+                {trace.rationale && (
+                  <div className="text-xs text-text-secondary">{trace.rationale}</div>
+                )}
               </Section>
               <Section label="Candidate domains">
                 <div className="flex flex-wrap gap-1">
@@ -63,7 +69,10 @@ export default function DiscoveryTraceDialog({
                     <span className="text-text-secondary">none</span>
                   ) : (
                     trace.candidateDomains.map((d) => (
-                      <code key={d} className="rounded bg-background-secondary px-1.5 py-0.5 text-xs">
+                      <code
+                        key={d}
+                        className="rounded bg-background-secondary px-1.5 py-0.5 text-xs"
+                      >
                         {d}
                       </code>
                     ))
@@ -78,10 +87,15 @@ export default function DiscoveryTraceDialog({
                     {trace.probes.map((p) => (
                       <li key={p.url} className="text-xs">
                         <code className="text-text-primary">GET {p.url}</code>
-                        <span className={cn('ml-2', p.found.length ? 'text-emerald-500' : 'text-text-secondary')}>
+                        <span
+                          className={cn(
+                            'ml-2',
+                            (p.found ?? []).length ? 'text-emerald-500' : 'text-text-secondary'
+                          )}
+                        >
                           → {p.outcome}
                         </span>
-                        {p.found.map((f) => (
+                        {(p.found ?? []).map((f) => (
                           <div key={f} className="pl-4 text-text-primary">
                             • {f}
                           </div>

@@ -103,6 +103,14 @@ pub fn may_auto_install(_discovery: &Discovery) -> bool {
     false
 }
 
+fn entries(n: usize) -> String {
+    if n == 1 {
+        "1 entry".to_string()
+    } else {
+        format!("{n} entries")
+    }
+}
+
 fn describe(d: &Discovery) -> String {
     let kind = match d.kind {
         DiscoveryKind::Server(_) => "MCP server",
@@ -242,9 +250,9 @@ impl DiscoveryService {
                 outcome: if discoveries.is_empty() {
                     "no catalog (or no installable entries)".into()
                 } else if discoveries.iter().all(|d| d.fixture) {
-                    format!("{} entr(y/ies) from demo fixture", discoveries.len())
+                    format!("{} from demo fixture", entries(discoveries.len()))
                 } else {
-                    format!("{} entr(y/ies) in live ai-catalog.json", discoveries.len())
+                    format!("{} in live ai-catalog.json", entries(discoveries.len()))
                 },
                 found: discoveries.iter().map(describe).collect(),
             });
@@ -260,8 +268,16 @@ impl DiscoveryService {
 
         trace.status = TraceStatus::Done;
         if found.is_empty() {
-            trace.decision =
-                "no catalog entries found on candidate domains; nothing to suggest".into();
+            let all_skipped = trace
+                .probes
+                .iter()
+                .all(|p| p.outcome.starts_with("skipped"));
+            trace.decision = if all_skipped {
+                "candidate domains were already probed earlier in this session; nothing new to suggest"
+                    .into()
+            } else {
+                "no catalog entries found on candidate domains; nothing to suggest".into()
+            };
             return;
         }
         let auto = found.iter().filter(|d| may_auto_install(d)).count();
@@ -274,9 +290,9 @@ impl DiscoveryService {
             )
         } else {
             format!(
-                "suggest installing {} (nudge only; auto-install declined for {} guessed-domain entr(y/ies), no trustManifest policy)",
+                "suggest installing {} (nudge only: auto-install declined for {} from guessed domains, no trustManifest policy)",
                 titles.join(", "),
-                titles.len() - auto
+                entries(titles.len() - auto)
             )
         };
     }

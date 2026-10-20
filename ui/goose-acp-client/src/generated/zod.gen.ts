@@ -142,12 +142,45 @@ export const zDiscoveryCardDto = z.object({
     serverName: z.string().nullish(),
     version: z.string().nullish(),
     endpoint: z.string().nullish(),
-    skills: z.array(zDiscoverySkillEntry).optional().default([])
+    skills: z.array(zDiscoverySkillEntry).optional().default([]),
+    track: z.string(),
+    intent: z.string().nullish(),
+    traceId: z.string().nullish()
+});
+
+export const zDiscoveryProbeDto = z.object({
+    domain: z.string(),
+    url: z.string(),
+    outcome: z.string(),
+    found: z.array(z.string()).optional().default([])
+});
+
+/**
+ * One run of the background discovery reasoner, for the trace viewer.
+ */
+export const zDiscoveryTraceDto = z.object({
+    id: z.string(),
+    status: z.string(),
+    startedAt: z.string(),
+    finishedAt: z.string().nullish(),
+    model: z.string(),
+    requests: z.array(z.string()),
+    systemPrompt: z.string(),
+    prompt: z.string(),
+    rawOutput: z.string(),
+    intent: z.string().nullish(),
+    rationale: z.string().nullish(),
+    candidateDomains: z.array(z.string()),
+    probes: z.array(zDiscoveryProbeDto),
+    decision: z.string()
 });
 
 export const zDiscoveryPendingResponse_unstable = z.object({
     mode: z.string(),
-    discoveries: z.array(zDiscoveryCardDto)
+    discoveries: z.array(zDiscoveryCardDto),
+    backgroundEnabled: z.boolean().optional().default(false),
+    backgroundRunning: z.boolean().optional().default(false),
+    traces: z.array(zDiscoveryTraceDto).optional().default([])
 });
 
 /**

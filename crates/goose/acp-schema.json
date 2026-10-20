@@ -442,6 +442,24 @@
           "items": {
             "$ref": "#/$defs/DiscoveryCardDto"
           }
+        },
+        "backgroundEnabled": {
+          "type": "boolean",
+          "description": "Whether the background (dual-track) reasoner is enabled.",
+          "default": false
+        },
+        "backgroundRunning": {
+          "type": "boolean",
+          "description": "True while a background reasoner run is in flight.",
+          "default": false
+        },
+        "traces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DiscoveryTraceDto"
+          },
+          "description": "Background reasoner runs for this session, oldest first.",
+          "default": []
         }
       },
       "required": [
@@ -519,6 +537,23 @@
             "$ref": "#/$defs/DiscoverySkillEntry"
           },
           "default": []
+        },
+        "track": {
+          "type": "string",
+          "description": "\"inline\" (a domain a tool call touched) or \"background\" (inferred intent)."
+        },
+        "intent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The intent the background reasoner inferred (background track only)."
+        },
+        "traceId": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -528,7 +563,8 @@
         "description",
         "sourceDomain",
         "fixture",
-        "requiresAuth"
+        "requiresAuth",
+        "track"
       ],
       "description": "A flat, UI-friendly projection of an AI Catalog / Server Card discovery."
     },
@@ -545,6 +581,112 @@
       "required": [
         "name",
         "description"
+      ]
+    },
+    "DiscoveryTraceDto": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "description": "\"reasoning\", \"probing\", \"done\" or \"failed\"."
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "systemPrompt": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "rawOutput": {
+          "type": "string"
+        },
+        "intent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "candidateDomains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DiscoveryProbeDto"
+          }
+        },
+        "decision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "startedAt",
+        "model",
+        "requests",
+        "systemPrompt",
+        "prompt",
+        "rawOutput",
+        "candidateDomains",
+        "probes",
+        "decision"
+      ],
+      "description": "One run of the background discovery reasoner, for the trace viewer."
+    },
+    "DiscoveryProbeDto": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "found": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "domain",
+        "url",
+        "outcome"
       ]
     },
     "DiscoveryInstallRequest_unstable": {
