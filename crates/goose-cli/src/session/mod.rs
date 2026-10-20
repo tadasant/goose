@@ -818,9 +818,9 @@ impl CliSession {
             let secret = if d.requires_auth() {
                 if let Some(instr) = d
                     .server_card()
-                    .and_then(|c| c.remote.as_ref())
-                    .and_then(|r| r.auth.as_ref())
-                    .and_then(|a| a.instructions.clone())
+                    .and_then(|c| c.primary_remote())
+                    .and_then(|r| r.auth_requirement())
+                    .and_then(|a| a.instructions)
                 {
                     output::render_text(&instr, Some(Color::Yellow), false);
                 }
@@ -858,7 +858,8 @@ impl CliSession {
                     let tools = self
                         .agent
                         .list_tools(&self.session_id, Some(ext_name.clone()))
-                        .await;
+                        .await
+                        .unwrap_or_default();
                     let tool_names: Vec<String> =
                         tools.iter().map(|t| t.name.to_string()).collect();
                     output::render_discovery_installed(&ext_name, &tool_names);

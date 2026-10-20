@@ -23,8 +23,8 @@ use crate::conversation::message::{
     ActionRequiredData, Message, MessageContent, ProviderMetadata, ToolRequest,
 };
 use crate::conversation::Conversation;
-use crate::hints::load_hints::SubdirectoryHintTracker;
 use crate::discovery::DiscoveryService;
+use crate::hints::load_hints::SubdirectoryHintTracker;
 use crate::hooks::{HookChainOutcome, HookContext, HookEvent, HookManager};
 use crate::session::Session;
 

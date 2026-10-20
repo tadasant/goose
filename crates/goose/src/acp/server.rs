@@ -106,6 +106,7 @@ mod config;
 mod custom_dispatch;
 mod diagnostics;
 mod dictation;
+mod discovery;
 mod dispatch;
 mod elicitation;
 mod extensions;

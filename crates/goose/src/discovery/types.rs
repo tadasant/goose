@@ -1,10 +1,12 @@
 //! Data model for the AI Catalog / Server Card auto-discovery feature.
 //!
-//! Implements the document shapes described in SEP-2127 ("Server Cards"):
-//!   - An **AI Catalog** served at `GET https://<domain>/.well-known/ai-catalog.json`
-//!     that lists the MCP servers (and Skills bundles) a domain advertises.
-//!   - A **Server Card** (`application/mcp-server-card+json`) describing a single
-//!     MCP server: identity, presentation, and *remote transport* configuration.
+//! Implements two published document shapes:
+//!   - An **AI Catalog** (`specVersion` 1.0, <https://github.com/Agent-Card/ai-catalog>)
+//!     served at `GET https://<domain>/.well-known/ai-catalog.json`, whose typed
+//!     `entries` point at MCP Server Cards, Agent Skills, and other artifacts.
+//!   - A **Server Card** (SEP-2127, final; <https://github.com/modelcontextprotocol/ext-server-card>,
+//!     `application/mcp-server-card+json`) describing a single MCP server:
+//!     identity, presentation, and its `remotes` (transport endpoints).
 //!
 //! The card intentionally excludes tool/resource/prompt listings — those are
 //! discovered at runtime over the MCP protocol once the server is connected. The
@@ -12,42 +14,44 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use utoipa::ToSchema;
 
-/// The `/.well-known/ai-catalog.json` document.
-///
-/// A catalog references zero or more server cards (by URL or inline) and zero or
-/// more Skills bundles. Fields are permissive so a partial/real-world catalog
-/// still parses.
+/// Media type of an MCP Server Card entry in an AI Catalog.
+pub const SERVER_CARD_MEDIA_TYPE: &str = "application/mcp-server-card+json";
+/// Media type of an Agent Skills metadata entry in an AI Catalog.
+pub const AGENT_SKILLS_MEDIA_TYPE: &str = "application/agent-skills+json";
+
+/// The `/.well-known/ai-catalog.json` document (AI Catalog `specVersion` 1.0).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct AiCatalog {
     #[serde(default)]
-    pub version: Option<String>,
-    /// Servers advertised by this domain.
+    pub spec_version: Option<String>,
     #[serde(default)]
-    pub servers: Vec<CatalogServerRef>,
-    /// Skills bundles advertised by this domain.
-    #[serde(default)]
-    pub skills: Vec<SkillsBundle>,
+    pub entries: Vec<CatalogEntry>,
 }
 
-/// A reference to a server card from inside a catalog. Either an inline `card`
-/// or a `server_card` URL pointing at the `application/mcp-server-card+json`
-/// document (recommended location: `<streamable-http-url>/server-card`).
+/// One catalog entry. Exactly one of `url` (fetch the artifact) or `data` (the
+/// artifact inline) is set; `type` is the artifact's media type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CatalogServerRef {
+#[serde(rename_all = "camelCase")]
+pub struct CatalogEntry {
+    pub identifier: String,
+    #[serde(rename = "type")]
+    pub media_type: String,
     #[serde(default)]
-    pub name: Option<String>,
-    /// URL of the server card document to fetch.
-    #[serde(default, alias = "serverCard", alias = "card_url", alias = "url")]
-    pub server_card: Option<String>,
-    /// Inline server card (lets a catalog ship cards without a second fetch).
+    pub url: Option<String>,
     #[serde(default)]
-    pub card: Option<ServerCard>,
+    pub data: Option<serde_json::Value>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
-/// A Server Card: advisory metadata for a single MCP server.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// A Server Card (SEP-2127, `application/mcp-server-card+json`): advisory
+/// metadata for a single MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerCard {
     /// Reverse-DNS style identity, e.g. `io.github.github/github-mcp-server`.
     pub name: String,
@@ -58,60 +62,120 @@ pub struct ServerCard {
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
-    pub icons: Option<Icons>,
+    pub icons: Vec<Icon>,
     #[serde(default)]
-    pub repository: Option<String>,
+    pub repository: Option<Repository>,
     #[serde(default)]
-    pub website: Option<String>,
-    /// Remote transport configuration (streamable-http endpoint + auth).
+    pub website_url: Option<String>,
     #[serde(default)]
-    pub remote: Option<RemoteTransport>,
+    pub remotes: Vec<RemoteTransport>,
     /// Namespaced extension metadata. Advisory only.
     #[serde(default, rename = "_meta")]
     pub meta: serde_json::Value,
 }
 
-/// Light/dark icons. Values may be `https?://` URLs or `data:` URIs.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
-pub struct Icons {
-    #[serde(default)]
-    pub light: Option<String>,
-    #[serde(default)]
-    pub dark: Option<String>,
-}
+impl ServerCard {
+    /// The first remote goose can install (streamable-http).
+    pub fn primary_remote(&self) -> Option<&RemoteTransport> {
+        self.remotes
+            .iter()
+            .find(|r| r.transport_type.eq_ignore_ascii_case("streamable-http"))
+    }
 
-impl Icons {
-    /// Best icon to show on a (typically light) UI surface.
-    pub fn any(&self) -> Option<&str> {
-        self.light.as_deref().or(self.dark.as_deref())
+    /// Best icon for a (typically light) UI surface.
+    pub fn icon_url(&self) -> Option<&str> {
+        self.icons
+            .iter()
+            .find(|i| i.theme.as_deref() != Some("dark"))
+            .or(self.icons.first())
+            .map(|i| i.src.as_str())
     }
 }
 
-/// Remote transport block of a server card.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct RemoteTransport {
-    /// Transport kind. Only `streamable-http` is supported for install today.
-    #[serde(default = "default_transport_type", rename = "type")]
-    pub transport_type: String,
-    /// The streamable-http endpoint URL.
+/// An icon; `src` may be an `https://` URL or a `data:` URI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Icon {
+    pub src: String,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+    #[serde(default)]
+    pub theme: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Repository {
     pub url: String,
-    /// Static headers to send with every request.
     #[serde(default)]
-    pub headers: HashMap<String, String>,
-    /// Protocol versions the server advertises support for.
+    pub source: Option<String>,
+}
+
+/// One entry of a card's `remotes` array.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteTransport {
+    /// `streamable-http` or `sse`. Only `streamable-http` is installable today.
+    #[serde(rename = "type")]
+    pub transport_type: String,
+    pub url: String,
     #[serde(default)]
-    pub protocol_versions: Vec<String>,
-    /// Auth requirement, if any. Absence means the server is auth-less.
+    pub headers: Vec<HeaderInput>,
     #[serde(default)]
+    pub supported_protocol_versions: Vec<String>,
+    /// Non-standard demo extension: explicit header-auth hint (used by the
+    /// mocked GitHub fixture). Spec cards express secrets via `headers`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<AuthRequirement>,
 }
 
-fn default_transport_type() -> String {
-    "streamable-http".to_string()
+impl RemoteTransport {
+    /// The secret the user must supply before connecting, if any: the explicit
+    /// `auth` hint, else the first required secret header without a value.
+    pub fn auth_requirement(&self) -> Option<AuthRequirement> {
+        if let Some(auth) = &self.auth {
+            return Some(auth.clone());
+        }
+        self.headers
+            .iter()
+            .find(|h| h.is_required && h.is_secret && h.value.is_none())
+            .map(|h| AuthRequirement {
+                kind: "header".to_string(),
+                header: Some(h.name.clone()),
+                prefix: None,
+                variable: Some(h.name.clone()),
+                instructions: h.description.clone(),
+            })
+    }
+
+    /// Headers with a fixed, non-templated value.
+    pub fn static_headers(&self) -> HashMap<String, String> {
+        self.headers
+            .iter()
+            .filter_map(|h| {
+                let value = h.value.as_ref()?;
+                (!value.contains('{')).then(|| (h.name.clone(), value.clone()))
+            })
+            .collect()
+    }
+}
+
+/// A `KeyValueInput` from the Server Card schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeaderInput {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub value: Option<String>,
+    #[serde(default)]
+    pub is_required: bool,
+    #[serde(default)]
+    pub is_secret: bool,
 }
 
 /// Describes how a client must authenticate to a remote server.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthRequirement {
     /// `header` (a static secret placed in a request header) or `oauth`.
     pub kind: String,
@@ -138,7 +202,7 @@ impl AuthRequirement {
 /// A bundle of Skills advertised alongside a domain's servers. Surfaced as its
 /// own discovery entry so the install nudge can offer Skills separately from the
 /// MCP server itself.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillsBundle {
     pub name: String,
     #[serde(default)]
@@ -151,7 +215,7 @@ pub struct SkillsBundle {
 }
 
 /// A single Skill inside a bundle.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillRef {
     pub name: String,
     #[serde(default)]
@@ -162,7 +226,7 @@ pub struct SkillRef {
 
 /// What a single discovery surfaces to the UI: either an installable MCP server
 /// or a bundle of Skills.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DiscoveryKind {
     // Boxed: `ServerCard` is much larger than `SkillsBundle`, so an unboxed
@@ -174,7 +238,7 @@ pub enum DiscoveryKind {
 /// A discovery surfaced by the sidecar: a server card or skills bundle found by
 /// probing a domain Goose touched. This is the object the CLI and Desktop render
 /// as an install nudge.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Discovery {
     /// Stable id (`<source_domain>#<name>`) used to install / dismiss.
     pub id: String,
@@ -229,9 +293,10 @@ impl Discovery {
     /// True if installing this server requires the user to supply a secret.
     pub fn requires_auth(&self) -> bool {
         match &self.kind {
-            DiscoveryKind::Server(c) => {
-                c.remote.as_ref().map(|r| r.auth.is_some()).unwrap_or(false)
-            }
+            DiscoveryKind::Server(c) => c
+                .primary_remote()
+                .and_then(|r| r.auth_requirement())
+                .is_some(),
             DiscoveryKind::Skills(_) => false,
         }
     }

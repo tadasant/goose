@@ -13,7 +13,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use super::fixtures;
-use super::types::{AiCatalog, Discovery, ServerCard};
+use super::types::{
+    AiCatalog, CatalogEntry, Discovery, ServerCard, SkillsBundle, AGENT_SKILLS_MEDIA_TYPE,
+    SERVER_CARD_MEDIA_TYPE,
+};
 
 /// Resolves a domain into discoveries.
 #[async_trait]
@@ -64,12 +67,47 @@ impl HttpResolver {
     }
 
     async fn fetch_card(&self, url: &str) -> Option<ServerCard> {
-        let resp = self.client.get(url).send().await.ok()?;
+        let resp = self
+            .client
+            .get(url)
+            .header(reqwest::header::ACCEPT, SERVER_CARD_MEDIA_TYPE)
+            .send()
+            .await
+            .ok()?;
         if !resp.status().is_success() {
             return None;
         }
-        // Accept either the dedicated card content-type or plain json.
         resp.json::<ServerCard>().await.ok()
+    }
+
+    async fn resolve_entry(&self, domain: &str, entry: CatalogEntry) -> Option<Discovery> {
+        match entry.media_type.as_str() {
+            SERVER_CARD_MEDIA_TYPE => {
+                let mut card = match (&entry.data, &entry.url) {
+                    (Some(data), _) => serde_json::from_value::<ServerCard>(data.clone()).ok()?,
+                    (None, Some(url)) => self.fetch_card(url).await?,
+                    (None, None) => return None,
+                };
+                // Entry-level presentation fields take precedence over the card's.
+                if entry.display_name.is_some() {
+                    card.title = entry.display_name;
+                }
+                if let Some(description) = entry.description {
+                    card.description = description;
+                }
+                Some(Discovery::new_server(domain, card, false))
+            }
+            AGENT_SKILLS_MEDIA_TYPE => {
+                let bundle = SkillsBundle {
+                    name: entry.display_name.unwrap_or(entry.identifier),
+                    description: entry.description.unwrap_or_default(),
+                    source: entry.url,
+                    skills: Vec::new(),
+                };
+                Some(Discovery::new_skills(domain, bundle, false))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -80,17 +118,10 @@ impl CatalogResolver for HttpResolver {
             return vec![];
         };
         let mut out = Vec::new();
-        for server_ref in catalog.servers {
-            if let Some(card) = server_ref.card {
-                out.push(Discovery::new_server(domain, card, false));
-            } else if let Some(card_url) = server_ref.server_card {
-                if let Some(card) = self.fetch_card(&card_url).await {
-                    out.push(Discovery::new_server(domain, card, false));
-                }
+        for entry in catalog.entries {
+            if let Some(discovery) = self.resolve_entry(domain, entry).await {
+                out.push(discovery);
             }
-        }
-        for bundle in catalog.skills {
-            out.push(Discovery::new_skills(domain, bundle, false));
         }
         out
     }

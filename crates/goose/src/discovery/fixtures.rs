@@ -1,12 +1,12 @@
 //! Demo fixtures for AI Catalog / Server Card discovery.
 //!
-//! No public domain serves a real `/.well-known/ai-catalog.json` or Server Card
-//! yet, so this module hand-authors the catalog documents the sidecar *would*
-//! fetch over HTTP once domains adopt SEP-2127. Each fixture is clearly labeled
-//! (`Discovery.fixture = true`) so demo content is never confused with a live,
-//! authenticated discovery.
+//! Hand-authored cards for domains that do not (yet) publish a real
+//! `/.well-known/ai-catalog.json`. Each fixture is clearly labeled
+//! (`Discovery.fixture = true`) so demo content is never confused with a live
+//! discovery. Domains that do publish a catalog (e.g. `github.com`,
+//! `huggingface.co`) are resolved live by the HTTP resolver instead.
 //!
-//! Two domains are wired:
+//! Two fixtures are wired:
 //!
 //!   * `modelcontextprotocol.io` — a *minimal real* server card for the public,
 //!     auth-less MCP server at `https://modelcontextprotocol.io/mcp`. The card is
@@ -15,14 +15,14 @@
 //!     A separate Skills bundle mirrors the real `mintlify://skills/*` resources
 //!     that endpoint exposes.
 //!
-//!   * `github.com` / `api.githubcopilot.com` — the GitHub MCP server card from
-//!     SEP-2127 issue #34 (endpoint `https://api.githubcopilot.com/mcp/`,
-//!     `Authorization` header auth). Used to drive the auth-entry install flow.
-
-use std::collections::HashMap;
+//!   * `api.github.com` — a mocked GitHub MCP server card with an explicit
+//!     `Authorization` header-auth hint, used to drive the auth-entry install
+//!     flow. (GitHub's real card, discovered live via `github.com`, carries no
+//!     auth hint and relies on OAuth at connect time.)
 
 use super::types::{
-    AuthRequirement, Discovery, Icons, RemoteTransport, ServerCard, SkillRef, SkillsBundle,
+    AuthRequirement, Discovery, Icon, RemoteTransport, Repository, ServerCard, SkillRef,
+    SkillsBundle,
 };
 
 /// A tiny inline SVG icon (rendered fine in both CLI metadata and Desktop card).
@@ -52,21 +52,23 @@ pub fn modelcontextprotocol_card() -> ServerCard {
         description: "Search and retrieval over the Model Context Protocol site. \
             Exposes search_model_context_protocol and a read-only docs filesystem."
             .to_string(),
-        icons: Some(Icons {
-            light: Some(mcp_icon()),
-            dark: Some(mcp_icon()),
+        icons: vec![Icon {
+            src: mcp_icon(),
+            mime_type: Some("image/svg+xml".to_string()),
+            theme: None,
+        }],
+        repository: Some(Repository {
+            url: "https://github.com/modelcontextprotocol/modelcontextprotocol".to_string(),
+            source: Some("github".to_string()),
         }),
-        repository: Some(
-            "https://github.com/modelcontextprotocol/modelcontextprotocol".to_string(),
-        ),
-        website: Some("https://modelcontextprotocol.io".to_string()),
-        remote: Some(RemoteTransport {
+        website_url: Some("https://modelcontextprotocol.io".to_string()),
+        remotes: vec![RemoteTransport {
             transport_type: "streamable-http".to_string(),
             url: "https://modelcontextprotocol.io/mcp".to_string(),
-            headers: HashMap::new(),
-            protocol_versions: vec!["2025-06-18".to_string(), "2025-03-26".to_string()],
+            headers: Vec::new(),
+            supported_protocol_versions: vec!["2025-06-18".to_string(), "2025-03-26".to_string()],
             auth: None,
-        }),
+        }],
         meta: serde_json::json!({
             "io.modelcontextprotocol/sep": 2127,
             "demo": "auth-less headline demo; endpoint is live"
@@ -111,17 +113,21 @@ pub fn github_card() -> ServerCard {
         description: "GitHub's official MCP server: repositories, issues, pull \
             requests, Actions, and code search over the GitHub API."
             .to_string(),
-        icons: Some(Icons {
-            light: Some(github_icon()),
-            dark: Some(github_icon()),
+        icons: vec![Icon {
+            src: github_icon(),
+            mime_type: Some("image/svg+xml".to_string()),
+            theme: None,
+        }],
+        repository: Some(Repository {
+            url: "https://github.com/github/github-mcp-server".to_string(),
+            source: Some("github".to_string()),
         }),
-        repository: Some("https://github.com/github/github-mcp-server".to_string()),
-        website: Some("https://github.com".to_string()),
-        remote: Some(RemoteTransport {
+        website_url: Some("https://github.com".to_string()),
+        remotes: vec![RemoteTransport {
             transport_type: "streamable-http".to_string(),
             url: "https://api.githubcopilot.com/mcp/".to_string(),
-            headers: HashMap::new(),
-            protocol_versions: vec!["2025-06-18".to_string()],
+            headers: Vec::new(),
+            supported_protocol_versions: vec!["2025-06-18".to_string()],
             auth: Some(AuthRequirement {
                 kind: "header".to_string(),
                 header: Some("Authorization".to_string()),
@@ -134,10 +140,10 @@ pub fn github_card() -> ServerCard {
                         .to_string(),
                 ),
             }),
-        }),
+        }],
         meta: serde_json::json!({
             "io.modelcontextprotocol/sep": 2127,
-            "demo": "mocked card from SEP-2127 issue #34; drives the auth-entry flow"
+            "demo": "mocked card; drives the auth-entry flow"
         }),
     }
 }
@@ -149,20 +155,14 @@ pub fn fixtures_for(domain: &str) -> Vec<Discovery> {
             Discovery::new_server(domain, modelcontextprotocol_card(), true),
             Discovery::new_skills(domain, modelcontextprotocol_skills(), true),
         ],
-        "github.com" | "api.githubcopilot.com" | "api.github.com" => {
-            vec![Discovery::new_server(domain, github_card(), true)]
-        }
+        "api.github.com" => vec![Discovery::new_server(domain, github_card(), true)],
         _ => vec![],
     }
 }
 
-/// Domains that the fixture layer recognizes. Used as extra "hint" substrings so
-/// a bare hostname (no `https://`) in a tool call still triggers a probe.
+/// Known catalog domains (fixture-backed or live). Used as extra "hint"
+/// substrings so a bare hostname (no `https://`) in a tool call still triggers
+/// a probe.
 pub fn fixture_domains() -> &'static [&'static str] {
-    &[
-        "modelcontextprotocol.io",
-        "github.com",
-        "api.githubcopilot.com",
-        "api.github.com",
-    ]
+    &["modelcontextprotocol.io", "github.com", "api.github.com"]
 }

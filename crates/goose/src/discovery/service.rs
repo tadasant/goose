@@ -17,7 +17,6 @@ use std::sync::{Arc, RwLock};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
 use crate::agents::extension::ExtensionConfig;
 use crate::config::Config;
@@ -27,7 +26,7 @@ use super::resolver::{CatalogResolver, DefaultResolver};
 use super::types::{Discovery, DiscoveryKind, ServerCard};
 
 /// How aggressively the sidecar captures domains.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiscoveryMode {
     /// Discovery disabled.
@@ -300,21 +299,11 @@ pub fn server_card_to_extension(
     secret: Option<&str>,
 ) -> Result<ExtensionConfig, String> {
     let remote = card
-        .remote
-        .as_ref()
-        .ok_or_else(|| "server card has no remote transport".to_string())?;
-    if !remote
-        .transport_type
-        .eq_ignore_ascii_case("streamable-http")
-    {
-        return Err(format!(
-            "unsupported transport type: {}",
-            remote.transport_type
-        ));
-    }
+        .primary_remote()
+        .ok_or_else(|| "server card has no streamable-http remote".to_string())?;
 
-    let mut headers = remote.headers.clone();
-    if let Some(auth) = &remote.auth {
+    let mut headers = remote.static_headers();
+    if let Some(auth) = remote.auth_requirement() {
         if auth.is_oauth() {
             // OAuth handled by goose's existing streamable-http OAuth flow on connect.
         } else {
@@ -338,6 +327,9 @@ pub fn server_card_to_extension(
         headers,
         timeout: Some(300),
         socket: None,
+        client_id: None,
+        client_secret_key: None,
+        scopes: Vec::new(),
         bundled: None,
         available_tools: Vec::new(),
     })

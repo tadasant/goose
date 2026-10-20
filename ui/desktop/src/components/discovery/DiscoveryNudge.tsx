@@ -1,42 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Boxes, Sparkles, ShieldCheck, X, Loader2, Check } from 'lucide-react';
-import { client } from '../../api/client.gen';
+import {
+  dismissDiscovery,
+  getPendingDiscoveries,
+  installDiscovery,
+  type DiscoveryCardDto as DiscoveryCard,
+} from '../../acp/discovery';
 import { Button } from '../ui/button';
 import { cn } from '../../utils';
-
-/**
- * A single discovery as projected by the goose-server `/discovery/pending`
- * route (see `DiscoveryCard` in crates/goose-server/src/routes/discovery.rs).
- */
-interface DiscoveryCard {
-  id: string;
-  kind: 'server' | 'skills';
-  title: string;
-  description: string;
-  source_domain: string;
-  fixture: boolean;
-  icon?: string | null;
-  requires_auth: boolean;
-  auth_kind?: string | null;
-  auth_instructions?: string | null;
-  server_name?: string | null;
-  version?: string | null;
-  endpoint?: string | null;
-  skills: { name: string; description: string }[];
-}
-
-interface PendingResponse {
-  mode: string;
-  discoveries: DiscoveryCard[];
-}
-
-interface InstallResponse {
-  ok: boolean;
-  kind: string;
-  extension_name?: string | null;
-  tools: string[];
-  message: string;
-}
 
 type RowState =
   | { phase: 'idle' }
@@ -60,11 +31,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
   const refresh = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = (await client.get({
-        url: '/discovery/pending',
-        query: { session_id: sessionId },
-      })) as { data?: PendingResponse };
-      const discoveries = res.data?.discoveries ?? [];
+      const { discoveries } = await getPendingDiscoveries(sessionId);
       setCards((prev) => {
         // Keep cards that are mid-flow (installing/done/error) even if the
         // server already cleared them, so the user sees the result.
@@ -80,7 +47,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
         return merged;
       });
     } catch {
-      // Backend not ready / route absent — stay silent, this is a sidecar.
+      // Backend not ready / method absent — stay silent, this is a sidecar.
     }
   }, [sessionId, rowState]);
 
@@ -101,10 +68,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
   const dismiss = async (card: DiscoveryCard) => {
     removeCard(card.id);
     try {
-      await client.post({
-        url: '/discovery/dismiss',
-        body: { session_id: sessionId, id: card.id },
-      });
+      await dismissDiscovery(sessionId, card.id);
     } catch {
       /* best-effort */
     }
@@ -112,7 +76,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
 
   const install = async (card: DiscoveryCard) => {
     // Auth-required servers: reveal the token field first.
-    if (card.kind === 'server' && card.requires_auth && card.auth_kind !== 'oauth') {
+    if (card.kind === 'server' && card.requiresAuth && card.authKind !== 'oauth') {
       if (rowState[card.id]?.phase !== 'auth') {
         setPhase(card.id, { phase: 'auth' });
         return;
@@ -125,22 +89,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
 
     setPhase(card.id, { phase: 'installing' });
     try {
-      const res = (await client.post({
-        url: '/discovery/install',
-        body: {
-          session_id: sessionId,
-          id: card.id,
-          secret: tokens[card.id] || undefined,
-        },
-      })) as { data?: InstallResponse; error?: unknown };
-      const data = res.data;
-      if (!data || !data.ok) {
-        setPhase(card.id, {
-          phase: 'error',
-          message: 'Install failed. See server logs.',
-        });
-        return;
-      }
+      const data = await installDiscovery(sessionId, card.id, tokens[card.id] || undefined);
       setPhase(card.id, {
         phase: 'done',
         message: data.message,
@@ -200,10 +149,10 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                       demo fixture
                     </span>
                   )}
-                  {card.requires_auth && (
+                  {card.requiresAuth && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
                       <ShieldCheck className="size-3" />
-                      {card.auth_kind === 'oauth' ? 'OAuth' : 'auth required'}
+                      {card.authKind === 'oauth' ? 'OAuth' : 'auth required'}
                     </span>
                   )}
                 </div>
@@ -221,7 +170,7 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                   {card.description}
                 </p>
                 <p className="mt-1 text-[11px] text-text-secondary">
-                  source: <span className="font-medium">{card.source_domain}</span>
+                  source: <span className="font-medium">{card.sourceDomain}</span>
                   {card.endpoint ? ` · ${card.endpoint}` : ''}
                 </p>
 
@@ -242,9 +191,9 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                 {/* Auth token entry */}
                 {st === 'auth' && (
                   <div className="mt-2">
-                    {card.auth_instructions && (
+                    {card.authInstructions && (
                       <p className="mb-1 text-[11px] text-amber-600 dark:text-amber-400">
-                        {card.auth_instructions}
+                        {card.authInstructions}
                       </p>
                     )}
                     <input
