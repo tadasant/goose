@@ -96,19 +96,18 @@ async fn is_safe_url(url: &str) -> bool {
     let Ok(parsed) = Url::parse(url) else {
         return false;
     };
-    let Some(host) = parsed.host_str() else {
+    let Some(host) = parsed.host_str().map(str::to_string) else {
         return false;
     };
-    if parsed.scheme() != "https" || !is_probeable_host(host) {
+    if parsed.scheme() != "https" || !is_probeable_host(&host) {
         return false;
     }
-    match tokio::net::lookup_host((host, parsed.port_or_known_default().unwrap_or(443))).await {
-        Ok(addrs) => {
-            let addrs: Vec<_> = addrs.collect();
-            !addrs.is_empty() && addrs.iter().all(|a| is_public_ip(a.ip()))
-        }
-        Err(_) => false,
-    }
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    let addrs: Vec<_> = match tokio::net::lookup_host((host.as_str(), port)).await {
+        Ok(addrs) => addrs.collect(),
+        Err(_) => return false,
+    };
+    !addrs.is_empty() && addrs.iter().all(|a| is_public_ip(a.ip()))
 }
 
 /// Fetches real `/.well-known/ai-catalog.json` documents and the server cards
