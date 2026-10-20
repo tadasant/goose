@@ -39,6 +39,47 @@ pub struct DiscoveryCardDto {
     pub endpoint: Option<String>,
     #[serde(default)]
     pub skills: Vec<DiscoverySkillEntry>,
+    /// "inline" (a domain a tool call touched) or "background" (inferred intent).
+    pub track: String,
+    /// The intent the background reasoner inferred (background track only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryProbeDto {
+    pub domain: String,
+    pub url: String,
+    pub outcome: String,
+    #[serde(default)]
+    pub found: Vec<String>,
+}
+
+/// One run of the background discovery reasoner, for the trace viewer.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryTraceDto {
+    pub id: String,
+    /// "reasoning", "probing", "done" or "failed".
+    pub status: String,
+    pub started_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<String>,
+    pub model: String,
+    pub requests: Vec<String>,
+    pub system_prompt: String,
+    pub prompt: String,
+    pub raw_output: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub candidate_domains: Vec<String>,
+    pub probes: Vec<DiscoveryProbeDto>,
+    pub decision: String,
 }
 
 /// List discoveries the background sidecar surfaced for a session.
@@ -58,6 +99,15 @@ pub struct DiscoveryPendingResponse {
     /// Active capture mode: "off", "light" or "full".
     pub mode: String,
     pub discoveries: Vec<DiscoveryCardDto>,
+    /// Whether the background (dual-track) reasoner is enabled.
+    #[serde(default)]
+    pub background_enabled: bool,
+    /// True while a background reasoner run is in flight.
+    #[serde(default)]
+    pub background_running: bool,
+    /// Background reasoner runs for this session, oldest first.
+    #[serde(default)]
+    pub traces: Vec<DiscoveryTraceDto>,
 }
 
 /// Install a discovered MCP server into the session (or acknowledge a Skills bundle).

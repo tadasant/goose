@@ -8,18 +8,20 @@
 //!
 //! See [`service::DiscoveryService`] for the entry point.
 
+pub mod background;
 pub mod fixtures;
 pub mod resolver;
 pub mod service;
 pub mod types;
 
+pub use background::{may_auto_install, ProbeRecord, ReasonerTrace, TraceStatus};
 pub use service::{
     discovery_to_extension, extension_name_for, server_card_to_extension, DiscoveryMode,
     DiscoveryService,
 };
 pub use types::{
-    AiCatalog, AuthRequirement, CatalogEntry, Discovery, DiscoveryKind, RemoteTransport,
-    ServerCard, SkillRef, SkillsBundle,
+    AiCatalog, AuthRequirement, CatalogEntry, Discovery, DiscoveryKind, DiscoveryOrigin,
+    RemoteTransport, ServerCard, SkillRef, SkillsBundle,
 };
 
 #[cfg(test)]
@@ -212,5 +214,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(super::extension_name_for(&card), "huggingface");
+    }
+
+    #[tokio::test]
+    async fn background_suggestions_are_deduplicated_per_intent() {
+        let svc = DiscoveryService::new(DiscoveryMode::Off, Arc::new(FixtureResolver));
+        let found = FixtureResolver.resolve("api.github.com").await;
+        assert_eq!(
+            svc.queue_background("Summarise my GitHub PRs", found.clone())
+                .len(),
+            1
+        );
+        assert!(svc
+            .queue_background("summarise my github prs", found)
+            .is_empty());
+        assert_eq!(svc.pending_count(), 1);
+        assert!(!super::may_auto_install(&svc.pending()[0]));
     }
 }

@@ -855,6 +855,71 @@ pub fn untrusted(text: &str) -> String {
     text.chars().filter(|c| !c.is_control()).collect()
 }
 
+pub fn render_background_discovery_running() {
+    println!(
+        "\n  {} {}",
+        style("◌").magenta(),
+        style("background discovery: reasoning about your intent…")
+            .magenta()
+            .dim()
+    );
+}
+
+pub fn render_background_trace(t: &goose::discovery::ReasonerTrace) {
+    let bar = style("┆").magenta();
+    println!();
+    println!(
+        "  {}",
+        style("◌ BACKGROUND DISCOVERY TRACE")
+            .black()
+            .on_magenta()
+            .bold()
+    );
+    println!("  {} {} {}", bar, style("model:").dim(), t.model);
+    if let Some(intent) = &t.intent {
+        println!(
+            "  {} {} {}",
+            bar,
+            style("intent:").dim(),
+            style(intent).bold()
+        );
+    }
+    if let Some(rationale) = &t.rationale {
+        for (i, line) in wrap_simple(rationale, 70).into_iter().enumerate() {
+            let label = if i == 0 { "why:" } else { "    " };
+            println!("  {} {} {}", bar, style(label).dim(), style(line).dim());
+        }
+    }
+    println!(
+        "  {} {} {}",
+        bar,
+        style("candidate domains:").dim(),
+        if t.candidate_domains.is_empty() {
+            "(none)".to_string()
+        } else {
+            t.candidate_domains.join(", ")
+        }
+    );
+    for p in &t.probes {
+        println!(
+            "  {} {} {} → {}",
+            bar,
+            style("probe").dim(),
+            style(&p.url).cyan(),
+            p.outcome
+        );
+        for f in &p.found {
+            println!("  {}     {} {}", bar, style("•").dim(), f);
+        }
+    }
+    println!(
+        "  {} {} {}",
+        bar,
+        style("decision:").dim(),
+        style(&t.decision).magenta()
+    );
+}
+
 pub fn render_discovery_nudge(d: &goose::discovery::Discovery) {
     use goose::discovery::DiscoveryKind;
     let badge = match &d.kind {
@@ -891,6 +956,14 @@ pub fn render_discovery_nudge(d: &goose::discovery::Discovery) {
             style("┃").cyan(),
             style("endpoint:").dim(),
             style(untrusted(&remote.url)).cyan()
+        );
+    }
+    if let goose::discovery::DiscoveryOrigin::Background { intent, .. } = &d.origin {
+        println!(
+            "  {}  {} {}",
+            style("┃").cyan(),
+            style("suggested by background reasoner · intent:").magenta(),
+            style(untrusted(intent)).magenta().bold()
         );
     }
     if let DiscoveryKind::Skills(bundle) = &d.kind {

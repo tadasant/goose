@@ -1,10 +1,44 @@
 use goose_sdk_types::custom_requests::{
     DiscoveryCardDto, DiscoveryDismissRequest, DiscoveryInstallRequest, DiscoveryInstallResponse,
-    DiscoveryPendingRequest, DiscoveryPendingResponse, DiscoverySkillEntry, EmptyResponse,
+    DiscoveryPendingRequest, DiscoveryPendingResponse, DiscoveryProbeDto, DiscoverySkillEntry,
+    DiscoveryTraceDto, EmptyResponse,
 };
 
 use super::{GooseAcpAgent, ResultExt};
-use crate::discovery::{discovery_to_extension, Discovery, DiscoveryKind};
+use crate::discovery::{
+    discovery_to_extension, Discovery, DiscoveryKind, DiscoveryOrigin, ReasonerTrace,
+};
+
+fn trace_dto(t: &ReasonerTrace) -> DiscoveryTraceDto {
+    DiscoveryTraceDto {
+        id: t.id.clone(),
+        status: serde_json::to_value(t.status)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default(),
+        started_at: t.started_at.to_rfc3339(),
+        finished_at: t.finished_at.map(|f| f.to_rfc3339()),
+        model: t.model.clone(),
+        requests: t.requests.clone(),
+        system_prompt: t.system_prompt.clone(),
+        prompt: t.prompt.clone(),
+        raw_output: t.raw_output.clone(),
+        intent: t.intent.clone(),
+        rationale: t.rationale.clone(),
+        candidate_domains: t.candidate_domains.clone(),
+        probes: t
+            .probes
+            .iter()
+            .map(|p| DiscoveryProbeDto {
+                domain: p.domain.clone(),
+                url: p.url.clone(),
+                outcome: p.outcome.clone(),
+                found: p.found.clone(),
+            })
+            .collect(),
+        decision: t.decision.clone(),
+    }
+}
 
 fn discovery_card(d: &Discovery) -> DiscoveryCardDto {
     let card = d.server_card();
@@ -40,6 +74,19 @@ fn discovery_card(d: &Discovery) -> DiscoveryCardDto {
         version: card.and_then(|c| c.version.clone()),
         endpoint: remote.map(|r| r.url.clone()),
         skills,
+        track: match d.origin {
+            DiscoveryOrigin::Inline => "inline",
+            DiscoveryOrigin::Background { .. } => "background",
+        }
+        .to_string(),
+        intent: match &d.origin {
+            DiscoveryOrigin::Background { intent, .. } => Some(intent.clone()),
+            DiscoveryOrigin::Inline => None,
+        },
+        trace_id: match &d.origin {
+            DiscoveryOrigin::Background { trace_id, .. } => Some(trace_id.clone()),
+            DiscoveryOrigin::Inline => None,
+        },
     }
 }
 
@@ -49,7 +96,11 @@ impl GooseAcpAgent {
         req: DiscoveryPendingRequest,
     ) -> Result<DiscoveryPendingResponse, agent_client_protocol::Error> {
         let agent = self.get_session_agent(&req.session_id).await?;
+        agent.discovery.refresh_from_config();
         Ok(DiscoveryPendingResponse {
+            background_enabled: agent.discovery.background_enabled(),
+            background_running: agent.discovery.background_running(),
+            traces: agent.discovery.traces().iter().map(trace_dto).collect(),
             mode: agent.discovery.mode().as_str().to_string(),
             discoveries: agent
                 .discovery

@@ -2,10 +2,16 @@ import type {
   DiscoveryCardDto,
   DiscoveryInstallResponse_unstable as DiscoveryInstallResponse,
   DiscoveryPendingResponse_unstable as DiscoveryPendingResponse,
+  DiscoveryTraceDto,
 } from '@aaif/goose-acp-client';
 import { getAcpClient } from './acpConnection';
 
-export type { DiscoveryCardDto, DiscoveryInstallResponse, DiscoveryPendingResponse };
+export type {
+  DiscoveryCardDto,
+  DiscoveryInstallResponse,
+  DiscoveryPendingResponse,
+  DiscoveryTraceDto,
+};
 
 export async function getPendingDiscoveries(sessionId: string): Promise<DiscoveryPendingResponse> {
   const client = await getAcpClient();

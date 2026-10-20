@@ -15,7 +15,7 @@ beforeEach(() => {
 
 describe('DiscoverySettingsSection', () => {
   it('reflects the persisted mode and writes the chosen mode back', async () => {
-    read.mockResolvedValue('light');
+    read.mockImplementation(async (key: string) => (key === 'discovery_mode' ? 'light' : false));
     upsert.mockResolvedValue(undefined);
 
     render(<DiscoverySettingsSection />);
@@ -35,5 +35,8 @@ describe('DiscoverySettingsSection', () => {
     // Choosing "Off" persists discovery_mode=off.
     fireEvent.click(screen.getByText('Off'));
     await waitFor(() => expect(upsert).toHaveBeenCalledWith('discovery_mode', 'off', false));
+
+    fireEvent.click(screen.getByTestId('discovery-background-switch'));
+    await waitFor(() => expect(upsert).toHaveBeenCalledWith('discovery_background', true, false));
   });
 });

@@ -684,6 +684,21 @@ impl Agent {
             });
         }
 
+        self.discovery.refresh_from_config();
+        if self.discovery.background_enabled() {
+            if let (Ok(provider), Ok(model_config)) = (
+                self.provider(&session_id).await,
+                self.model_config_for_session(&session_id).await,
+            ) {
+                self.discovery.spawn_background_reasoner(
+                    provider,
+                    model_config,
+                    session_id.clone(),
+                    user_message.as_concat_text(),
+                );
+            }
+        }
+
         let cancel = cancel_token.unwrap_or_default();
         let initial_stream = self
             .stream_state_machine_session(session_config.clone(), cancel.clone())
