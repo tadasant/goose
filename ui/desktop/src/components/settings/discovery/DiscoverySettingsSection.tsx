@@ -13,7 +13,7 @@ const OPTIONS: { value: Mode; title: string; description: string }[] = [
   {
     value: 'off',
     title: 'Off',
-    description: 'No background discovery. Goose never probes the domains it touches.',
+    description: 'Inline track off: goose does not probe the domains tool calls touch.',
   },
   {
     value: 'light',
