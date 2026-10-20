@@ -149,4 +149,13 @@ mod tests {
             _ => panic!("expected streamable_http extension"),
         }
     }
+
+    #[test]
+    fn generic_card_names_fall_back_to_publisher() {
+        let card: super::ServerCard = serde_json::from_str(
+            r#"{"name":"huggingface.co/mcp","version":"0.4.31","description":"x","remotes":[{"type":"streamable-http","url":"https://huggingface.co/mcp"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(super::extension_name_for(&card), "huggingface");
+    }
 }

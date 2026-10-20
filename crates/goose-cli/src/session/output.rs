@@ -873,7 +873,9 @@ pub fn render_discovery_nudge(d: &goose::discovery::Discovery) {
         if d.fixture {
             style("  (demo fixture)").yellow().to_string()
         } else {
-            String::new()
+            style("  (live /.well-known/ai-catalog.json)")
+                .green()
+                .to_string()
         }
     );
     if let DiscoveryKind::Skills(bundle) = &d.kind {

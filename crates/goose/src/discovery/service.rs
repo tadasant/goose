@@ -273,8 +273,18 @@ fn normalize_host(host: &str) -> String {
 
 /// A short, filesystem/key-safe extension name derived from a card's reverse-DNS
 /// identity (e.g. `io.github.github/github-mcp-server` → `github-mcp-server`).
+/// Generic trailing segments such as `huggingface.co/mcp` fall back to the
+/// publisher (`huggingface`).
 pub fn extension_name_for(card: &ServerCard) -> String {
-    let base = card.name.rsplit('/').next().unwrap_or(&card.name);
+    const GENERIC: &[&str] = &["mcp", "server", "mcp-server"];
+    let mut segments = card.name.rsplit('/');
+    let last = segments.next().unwrap_or(&card.name);
+    let base = match segments.next() {
+        Some(publisher) if GENERIC.contains(&last.to_ascii_lowercase().as_str()) => {
+            publisher.split('.').next().unwrap_or(publisher)
+        }
+        _ => last,
+    };
     let cleaned: String = base
         .chars()
         .map(|c| {

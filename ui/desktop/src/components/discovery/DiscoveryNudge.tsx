@@ -144,9 +144,13 @@ export default function DiscoveryNudge({ sessionId }: { sessionId: string }) {
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
                     {isServer ? 'MCP server discovered' : 'Skills bundle discovered'}
                   </span>
-                  {card.fixture && (
+                  {card.fixture ? (
                     <span className="rounded-full bg-background-muted px-2 py-0.5 text-[10px] text-text-secondary">
                       demo fixture
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-400">
+                      live ai-catalog.json
                     </span>
                   )}
                   {card.requiresAuth && (
