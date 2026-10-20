@@ -224,6 +224,18 @@ export type DiscoveryPendingResponse_unstable = {
      */
     mode: string;
     discoveries: Array<DiscoveryCardDto>;
+    /**
+     * Whether the background (dual-track) reasoner is enabled.
+     */
+    backgroundEnabled?: boolean;
+    /**
+     * True while a background reasoner run is in flight.
+     */
+    backgroundRunning?: boolean;
+    /**
+     * Background reasoner runs for this session, oldest first.
+     */
+    traces?: Array<DiscoveryTraceDto>;
 };
 
 /**
@@ -251,11 +263,50 @@ export type DiscoveryCardDto = {
     version?: string | null;
     endpoint?: string | null;
     skills?: Array<DiscoverySkillEntry>;
+    /**
+     * "inline" (a domain a tool call touched) or "background" (inferred intent).
+     */
+    track: string;
+    /**
+     * The intent the background reasoner inferred (background track only).
+     */
+    intent?: string | null;
+    traceId?: string | null;
 };
 
 export type DiscoverySkillEntry = {
     name: string;
     description: string;
+};
+
+/**
+ * One run of the background discovery reasoner, for the trace viewer.
+ */
+export type DiscoveryTraceDto = {
+    id: string;
+    /**
+     * "reasoning", "probing", "done" or "failed".
+     */
+    status: string;
+    startedAt: string;
+    finishedAt?: string | null;
+    model: string;
+    requests: Array<string>;
+    systemPrompt: string;
+    prompt: string;
+    rawOutput: string;
+    intent?: string | null;
+    rationale?: string | null;
+    candidateDomains: Array<string>;
+    probes: Array<DiscoveryProbeDto>;
+    decision: string;
+};
+
+export type DiscoveryProbeDto = {
+    domain: string;
+    url: string;
+    outcome: string;
+    found?: Array<string>;
 };
 
 /**

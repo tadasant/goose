@@ -778,8 +778,21 @@ impl CliSession {
     /// on confirmation, augments the *current* session with the discovered server.
     async fn surface_discovery_nudges(&mut self) -> Result<()> {
         use goose::discovery::DiscoveryMode;
-        if self.agent.discovery.mode() == DiscoveryMode::Off {
+        let background = self.agent.discovery.background_enabled();
+        if self.agent.discovery.mode() == DiscoveryMode::Off && !background {
             return Ok(());
+        }
+        if background && self.agent.discovery.background_running() {
+            output::render_background_discovery_running();
+            for _ in 0..15 {
+                if !self.agent.discovery.background_running() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        }
+        for trace in self.agent.discovery.take_unsurfaced_traces() {
+            output::render_background_trace(&trace);
         }
         for _ in 0..6 {
             if self.agent.discovery.probes_in_flight() == 0 {

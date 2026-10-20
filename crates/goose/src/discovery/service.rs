@@ -2,7 +2,7 @@
 //!
 //! [`DiscoveryService`] watches the domains Goose touches and, in the background,
 //! probes them for AI Catalogs / Server Cards without ever blocking the agent
-//! loop. Captured domains are de-duplicated and negative-cached; each probe runs
+//! loop. Captured domains are de-duplicated and bounded; each probe runs
 //! on its own detached task. Results land in a `pending` list the CLI and Desktop
 //! surface as install nudges.
 //!
@@ -11,8 +11,8 @@
 //!   * **Light-touch** — only domains in fetch/search/browse-style tool calls
 //!     (pre-tool probing on fetch/browse tools, per SEP-2127).
 
-use std::collections::HashSet;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashSet, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
 use once_cell::sync::Lazy;
@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::agents::extension::ExtensionConfig;
 use crate::config::Config;
 
+use super::background::ReasonerTrace;
 use super::fixtures;
 use super::resolver::{is_probeable_host, CatalogResolver, DefaultResolver};
 use super::types::{Discovery, DiscoveryKind, ServerCard};
@@ -61,9 +62,12 @@ const CONFIG_KEY_MODE: &str = "discovery_mode";
 const CONFIG_KEY_HTTP: &str = "discovery_http_probe";
 /// Bound on distinct domains probed per session.
 const MAX_SEEN_DOMAINS: usize = 256;
+pub(super) const CONFIG_KEY_BACKGROUND: &str = "discovery_background";
+const MAX_TRACES: usize = 20;
+const MAX_RECENT_REQUESTS: usize = 4;
 
 #[derive(Default)]
-struct DiscoveryState {
+pub(super) struct DiscoveryState {
     /// Domains already enqueued/probed — dedup guard.
     seen_domains: HashSet<String>,
     /// Discoveries found, awaiting user action.
@@ -74,36 +78,164 @@ struct DiscoveryState {
     installed: HashSet<String>,
     /// Discovery ids the user dismissed.
     dismissed: HashSet<String>,
+    /// Background-reasoner traces, oldest first.
+    traces: Vec<ReasonerTrace>,
+    /// Domains the background reasoner already probed this session.
+    background_probed: HashSet<String>,
+    /// Normalized intents that already produced a background nudge.
+    background_intents: HashSet<String>,
+    /// The user's most recent requests, so the reasoner can reason across turns.
+    recent_requests: VecDeque<String>,
+    /// Finished trace ids the CLI already printed.
+    surfaced_traces: HashSet<String>,
 }
 
 /// Background domain-watcher + catalog prober. Cheap to clone the `Arc`.
 pub struct DiscoveryService {
     mode: RwLock<DiscoveryMode>,
-    resolver: Arc<dyn CatalogResolver>,
-    state: Arc<RwLock<DiscoveryState>>,
+    background: AtomicBool,
+    pub(super) resolver: Arc<dyn CatalogResolver>,
+    pub(super) state: Arc<RwLock<DiscoveryState>>,
     in_flight: Arc<AtomicUsize>,
 }
 
 impl DiscoveryService {
-    /// Build a service from global config (`discovery_mode`, `discovery_http_probe`).
+    /// Build a service from global config (`discovery_mode`, `discovery_background`,
+    /// `discovery_http_probe`).
     pub fn from_config() -> Self {
+        let config = Config::global();
+        let enable_http = config.get_param::<bool>(CONFIG_KEY_HTTP).unwrap_or(true);
+        let service = DiscoveryService::new(
+            DiscoveryMode::Light,
+            Arc::new(DefaultResolver::new(enable_http)),
+        );
+        service.refresh_from_config();
+        service
+    }
+
+    pub fn new(mode: DiscoveryMode, resolver: Arc<dyn CatalogResolver>) -> Self {
+        DiscoveryService {
+            mode: RwLock::new(mode),
+            background: AtomicBool::new(false),
+            resolver,
+            state: Arc::new(RwLock::new(DiscoveryState::default())),
+            in_flight: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Re-read both tracks' settings so a Settings change applies on the next turn
+    /// of an already-running session (no restart or rebuild needed).
+    pub fn refresh_from_config(&self) {
         let config = Config::global();
         let mode = config
             .get_param::<String>(CONFIG_KEY_MODE)
             .ok()
             .map(|s| DiscoveryMode::from_config_str(&s))
             .unwrap_or(DiscoveryMode::Off);
-        let enable_http = config.get_param::<bool>(CONFIG_KEY_HTTP).unwrap_or(true);
-        DiscoveryService::new(mode, Arc::new(DefaultResolver::new(enable_http)))
+        self.set_mode(mode);
+        let background = config
+            .get_param::<bool>(CONFIG_KEY_BACKGROUND)
+            .or_else(|_| {
+                config
+                    .get_param::<String>(CONFIG_KEY_BACKGROUND)
+                    .map(|s| s.eq_ignore_ascii_case("true"))
+            })
+            .unwrap_or(false);
+        self.set_background_enabled(background);
     }
 
-    pub fn new(mode: DiscoveryMode, resolver: Arc<dyn CatalogResolver>) -> Self {
-        DiscoveryService {
-            mode: RwLock::new(mode),
-            resolver,
-            state: Arc::new(RwLock::new(DiscoveryState::default())),
-            in_flight: Arc::new(AtomicUsize::new(0)),
+    pub fn background_enabled(&self) -> bool {
+        self.background.load(Ordering::Relaxed)
+    }
+
+    pub fn set_background_enabled(&self, enabled: bool) {
+        self.background.store(enabled, Ordering::Relaxed);
+    }
+
+    /// Remember a user request and return the recent ones (oldest first).
+    pub fn note_user_request(&self, text: &str) -> Vec<String> {
+        let mut st = self.state.write().unwrap();
+        st.recent_requests.push_back(text.to_string());
+        while st.recent_requests.len() > MAX_RECENT_REQUESTS {
+            st.recent_requests.pop_front();
         }
+        st.recent_requests.iter().cloned().collect()
+    }
+
+    pub fn traces(&self) -> Vec<ReasonerTrace> {
+        self.state.read().unwrap().traces.clone()
+    }
+
+    /// Finished traces the CLI has not printed yet; marks them printed.
+    pub fn take_unsurfaced_traces(&self) -> Vec<ReasonerTrace> {
+        let mut st = self.state.write().unwrap();
+        let fresh: Vec<ReasonerTrace> = st
+            .traces
+            .iter()
+            .filter(|t| !t.is_running() && !st.surfaced_traces.contains(&t.id))
+            .cloned()
+            .collect();
+        for t in &fresh {
+            st.surfaced_traces.insert(t.id.clone());
+        }
+        fresh
+    }
+
+    pub fn background_running(&self) -> bool {
+        self.state
+            .read()
+            .unwrap()
+            .traces
+            .iter()
+            .any(|t| t.is_running())
+    }
+
+    pub(super) fn upsert_trace(&self, trace: &ReasonerTrace) {
+        let mut st = self.state.write().unwrap();
+        match st.traces.iter_mut().find(|t| t.id == trace.id) {
+            Some(existing) => *existing = trace.clone(),
+            None => st.traces.push(trace.clone()),
+        }
+        let excess = st.traces.len().saturating_sub(MAX_TRACES);
+        let evicted: Vec<String> = st.traces.drain(..excess).map(|t| t.id).collect();
+        for id in evicted {
+            st.surfaced_traces.remove(&id);
+        }
+    }
+
+    /// Claim a domain for a background probe; false if this session already probed it.
+    pub(super) fn claim_background_domain(&self, domain: &str) -> bool {
+        self.state
+            .write()
+            .unwrap()
+            .background_probed
+            .insert(domain.to_string())
+    }
+
+    /// Queue background-track discoveries as nudges, at most one round per intent.
+    /// Returns the ids actually queued.
+    pub(super) fn queue_background(
+        &self,
+        intent: &str,
+        discoveries: Vec<Discovery>,
+    ) -> Vec<String> {
+        let mut st = self.state.write().unwrap();
+        let key = intent.trim().to_ascii_lowercase();
+        if !key.is_empty() && !st.background_intents.insert(key) {
+            return Vec::new();
+        }
+        let mut queued = Vec::new();
+        for d in discoveries {
+            if st.installed.contains(&d.id)
+                || st.dismissed.contains(&d.id)
+                || st.pending.iter().any(|p| p.id == d.id)
+            {
+                continue;
+            }
+            queued.push(d.id.clone());
+            st.pending.push(d);
+        }
+        queued
     }
 
     pub fn mode(&self) -> DiscoveryMode {
@@ -268,7 +400,7 @@ pub fn extract_hosts(text: &str) -> Vec<String> {
 }
 
 /// Normalize a host: lowercase, strip trailing dot, drop a leading `www.`.
-fn normalize_host(host: &str) -> String {
+pub(crate) fn normalize_host(host: &str) -> String {
     let mut h = host.trim().trim_end_matches('.').to_ascii_lowercase();
     if let Some(stripped) = h.strip_prefix("www.") {
         h = stripped.to_string();

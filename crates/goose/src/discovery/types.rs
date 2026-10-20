@@ -250,6 +250,21 @@ pub struct Discovery {
     /// content is never mistaken for a real, authenticated discovery.
     #[serde(default)]
     pub fixture: bool,
+    #[serde(default)]
+    pub origin: DiscoveryOrigin,
+}
+
+/// Which track surfaced a discovery: the inline sidecar (a domain a tool call
+/// touched) or the background reasoner (a domain inferred from user intent).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "track", rename_all = "snake_case")]
+pub enum DiscoveryOrigin {
+    #[default]
+    Inline,
+    Background {
+        intent: String,
+        trace_id: String,
+    },
 }
 
 impl Discovery {
@@ -259,6 +274,7 @@ impl Discovery {
             source_domain: source_domain.to_string(),
             kind: DiscoveryKind::Server(Box::new(card)),
             fixture,
+            origin: DiscoveryOrigin::Inline,
         }
     }
 
@@ -268,6 +284,7 @@ impl Discovery {
             source_domain: source_domain.to_string(),
             kind: DiscoveryKind::Skills(bundle),
             fixture,
+            origin: DiscoveryOrigin::Inline,
         }
     }
 

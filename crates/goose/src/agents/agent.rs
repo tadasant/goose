@@ -38,6 +38,7 @@ use crate::scheduler_trait::SchedulerTrait;
 use crate::security::adversary_inspector::AdversaryInspector;
 use crate::security::egress_inspector::EgressInspector;
 use crate::security::security_inspector::SecurityInspector;
+use crate::session::session_manager::SessionType;
 use crate::session::{Session, SessionManager, SessionNameUpdate};
 use crate::tool_inspection::ToolInspectionManager;
 use crate::tool_monitor::RepetitionInspector;
@@ -682,6 +683,28 @@ impl Agent {
                     Err(e) => tracing::warn!("Failed to generate session description: {}", e),
                 }
             });
+        }
+
+        self.discovery.refresh_from_config();
+        let user_facing = matches!(
+            session_manager
+                .get_session(&session_id, false)
+                .await
+                .map(|s| s.session_type),
+            Ok(SessionType::User | SessionType::Acp)
+        );
+        if user_facing && self.discovery.background_enabled() {
+            if let (Ok(provider), Ok(model_config)) = (
+                self.provider(&session_id).await,
+                self.model_config_for_session(&session_id).await,
+            ) {
+                self.discovery.spawn_background_reasoner(
+                    provider,
+                    model_config,
+                    session_id.clone(),
+                    user_message.as_concat_text(),
+                );
+            }
         }
 
         let cancel = cancel_token.unwrap_or_default();

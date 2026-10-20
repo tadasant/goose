@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import DiscoveryNudge from './DiscoveryNudge';
+import { IntlTestWrapper } from '../../i18n/test-utils';
 
 const getPending = vi.fn();
 const install = vi.fn();
@@ -53,7 +54,7 @@ describe('DiscoveryNudge', () => {
       message: 'docs-server is now active in this session',
     });
 
-    render(<DiscoveryNudge sessionId="s1" />);
+    render(<DiscoveryNudge sessionId="s1" />, { wrapper: IntlTestWrapper });
 
     await waitFor(() => {
       expect(screen.getByText('MCP server discovered')).toBeInTheDocument();
@@ -81,7 +82,7 @@ describe('DiscoveryNudge', () => {
       message: 'github-mcp-server is now active in this session',
     });
 
-    render(<DiscoveryNudge sessionId="s1" />);
+    render(<DiscoveryNudge sessionId="s1" />, { wrapper: IntlTestWrapper });
 
     await waitFor(() => expect(screen.getByText('GitHub MCP Server')).toBeInTheDocument());
     expect(screen.getByText('auth required')).toBeInTheDocument();
@@ -99,8 +100,90 @@ describe('DiscoveryNudge', () => {
 
   it('renders nothing when there are no discoveries', async () => {
     getPending.mockResolvedValue({ mode: 'light', discoveries: [] });
-    const { container } = render(<DiscoveryNudge sessionId="s1" />);
+    const { container } = render(<DiscoveryNudge sessionId="s1" />, { wrapper: IntlTestWrapper });
     await waitFor(() => expect(getPending).toHaveBeenCalled());
     expect(container.querySelector('[data-testid="discovery-nudge"]')).toBeNull();
+  });
+  it('shows the background-discovery affordance and opens the full trace', async () => {
+    const trace = {
+      id: 't1',
+      status: 'done',
+      startedAt: new Date().toISOString(),
+      model: 'openai / gpt-4o-mini',
+      requests: ['go to my GitHub and summarise my open PRs'],
+      systemPrompt: "You are goose's background AI Catalog discovery reasoner.",
+      prompt: 'Recent user requests',
+      rawOutput: '{"intent":"summarise the user\'s open GitHub PRs","domains":["github.com"]}',
+      intent: "summarise the user's open GitHub PRs",
+      rationale: 'GitHub publishes an official MCP server',
+      candidateDomains: ['github.com'],
+      probes: [
+        {
+          domain: 'github.com',
+          url: 'https://github.com/.well-known/ai-catalog.json',
+          outcome: '1 entry in live ai-catalog.json',
+          found: ['MCP server: GitHub'],
+        },
+      ],
+      decision: 'suggest installing MCP server: GitHub (nudge only)',
+    };
+    getPending.mockResolvedValue({
+      mode: 'off',
+      backgroundEnabled: true,
+      backgroundRunning: false,
+      traces: [trace],
+      discoveries: [
+        {
+          ...serverCard,
+          id: 'gh',
+          title: 'GitHub',
+          sourceDomain: 'github.com',
+          track: 'background',
+          intent: trace.intent,
+          traceId: 't1',
+        },
+      ],
+    });
+
+    render(<DiscoveryNudge sessionId="s1" />, { wrapper: IntlTestWrapper });
+
+    const status = await screen.findByTestId('background-discovery-status');
+    expect(status).toHaveTextContent('suggest installing MCP server: GitHub');
+    expect(
+      screen.getByText(/background · summarise the user's open GitHub PRs/)
+    ).toBeInTheDocument();
+
+    fireEvent.click(status);
+    const dialog = await screen.findByTestId('discovery-trace');
+    expect(dialog).toHaveTextContent('GET https://github.com/.well-known/ai-catalog.json');
+    expect(dialog).toHaveTextContent('go to my GitHub and summarise my open PRs');
+  });
+
+  it('shows a running indicator while the background reasoner works', async () => {
+    getPending.mockResolvedValue({
+      mode: 'off',
+      backgroundEnabled: true,
+      backgroundRunning: true,
+      traces: [
+        {
+          id: 't2',
+          status: 'reasoning',
+          startedAt: new Date().toISOString(),
+          model: 'm',
+          requests: ['x'],
+          systemPrompt: '',
+          prompt: '',
+          rawOutput: '',
+          candidateDomains: [],
+          probes: [],
+          decision: 'reasoning about intent…',
+        },
+      ],
+      discoveries: [],
+    });
+    render(<DiscoveryNudge sessionId="s1" />, { wrapper: IntlTestWrapper });
+    const status = await screen.findByTestId('background-discovery-status');
+    expect(status).toHaveAttribute('data-running', 'true');
+    expect(status).toHaveTextContent('reasoning about intent');
   });
 });
